@@ -140,6 +140,14 @@ secret needed), and a separate `eval-gate` job runs the real golden-set eval —
 pushes to `main`, manual dispatch, or a weekly schedule, so it never burns API cost on
 every commit or runs (uselessly, without a secret) on an external PR.
 
+To let `eval-gate` actually run in your own fork/repo, set, under **Settings → Secrets
+and variables → Actions**: `OPENAI_API_KEY` as a repository **Secret** (required), and
+optionally `OPENAI_CHAT_MODEL` / `OPENAI_CRITIC_MODEL` as repository **Variables** if you
+want CI to use the same model choices as your local `.env` — `ci.yml` falls back to
+`gpt-4o-mini` / `gpt-4o` respectively if you don't set them, matching `.env.example`'s
+own recommendation. See the matching engineering note below for why that fallback
+exists — it's not a hypothetical.
+
 ### Known limitations, and why this is by design
 
 No LLM-based system — this one included — can guarantee it never makes a questionable
@@ -532,3 +540,27 @@ catch on `cyber-risk-intelligence-lakehouse` for the same idea applied to an ML 
   sometimes doesn't, and the system's job was never to eliminate that variance, only to make sure a
   client calling this API only ever sees a fully-resolved report or a clean `502`, never a
   half-fixed one. Confirmed live, on real (not scripted) input, that both outcomes hold.
+
+- **Phase 6 — going live on GitHub Actions surfaced a config-drift bug the local dev loop could
+  never have caught.** First real `eval-gate` run (after finally getting `OPENAI_API_KEY` into the
+  repo's Actions secrets — an earlier attempt failed because the secret had been named `API_KEY`,
+  not `OPENAI_API_KEY`, a plain typo caught immediately from the same `RuntimeError` message
+  `get_collection` already raises for a missing key) got past that, actually called the real API —
+  and then failed `critic_converged` on **all 3** golden JDs at once, every one stuck at
+  `revision_count == max_revisions + 1` (fully exhausted, never satisfied). Uniform failure across
+  every JD, on a gate that had converged locally before, pointed away from "the model just had a
+  bad run" and toward a systematic difference between the two environments. It was: local `.env`
+  sets `OPENAI_CRITIC_MODEL=gpt-4o` (`.env.example` says why — plain `gpt-4o-mini` "can be
+  over-strict" as a critic), but the CI workflow only ever passed through `OPENAI_API_KEY`, so
+  `eval-gate` was silently running the critic on the stricter default the whole time. Not a bug in
+  the pipeline itself — every hard gate did exactly its job, correctly failing a run whose critic
+  genuinely never passed — but a bug in what CI was actually testing: it wasn't exercising the same
+  configuration this project is actually meant to run with. Fixed two ways at once: `ci.yml` now
+  passes `OPENAI_CHAT_MODEL`/`OPENAI_CRITIC_MODEL` through as repository Variables, AND falls back
+  to the `.env.example`-recommended values (`gpt-4o-mini` / `gpt-4o`) via `${{ vars.X || 'default'
+  }}` if those Variables are never set — so a forgotten config step degrades to the *documented*
+  default behavior, not a silently stricter one nobody chose. General lesson, and a fitting one to
+  end this project's CI setup on: `.env` being gitignored (correctly, since it holds the API key)
+  means every *other* variable in it needs a deliberate, explicit decision about whether CI should
+  mirror it — "add the secret" is not the same task as "make CI match local," and this project
+  found out the difference the hard way, on the very first real run.

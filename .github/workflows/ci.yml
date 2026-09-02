@@ -39,6 +39,17 @@ jobs:
       (github.event_name == 'push' && github.ref == 'refs/heads/main')
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # Not secrets (just model names) -- repo Variables, not Secrets. Defaulted here
+      # too (the `|| '...'` fallback), matching .env.example's recommendation, so this
+      # workflow can't silently drift back to a stricter/cheaper default than whatever
+      # is actually being developed against locally, the way it did once already: the
+      # first real eval-gate run failed all 3 golden JDs on critic_converged because
+      # OPENAI_CRITIC_MODEL wasn't set here, so the critic silently ran as the
+      # default gpt-4o-mini instead of the gpt-4o configured in the local .env --
+      # .env.example itself already documents gpt-4o-mini as "can be over-strict" for
+      # the critic specifically, which is exactly what happened.
+      OPENAI_CHAT_MODEL: ${{ vars.OPENAI_CHAT_MODEL || 'gpt-4o-mini' }}
+      OPENAI_CRITIC_MODEL: ${{ vars.OPENAI_CRITIC_MODEL || 'gpt-4o' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
