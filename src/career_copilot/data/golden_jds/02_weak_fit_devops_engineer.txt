@@ -1,0 +1,15 @@
+Job Title: Senior DevOps Engineer
+
+Responsibilities:
+1. Design, build, and maintain Kubernetes clusters across multiple cloud regions
+2. Own CI/CD pipelines end-to-end (GitHub Actions, ArgoCD) for a 50+ microservice platform
+3. Write and maintain Terraform modules for infrastructure-as-code across AWS and GCP
+4. Participate in a 24/7 on-call rotation for production incident response
+5. Drive SRE practices: SLOs, error budgets, chaos engineering exercises
+
+Requirements:
+- 5+ years operating Kubernetes in production at scale
+- Deep expertise in Terraform / Pulumi and multi-cloud infrastructure-as-code
+- Strong experience with observability stacks (Prometheus, Grafana, Datadog)
+- Proven on-call incident-response experience with postmortem culture
+- Bonus: experience with service mesh (Istio/Linkerd) and progressive delivery

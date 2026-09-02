@@ -1,0 +1,50 @@
+name: CI
+
+# Two-tier CI, deliberately: unit-tests runs on every push/PR, needs no secret, and
+# costs nothing — it's the fast, always-on gate. eval-gate runs the golden JD set
+# through the real OpenAI API, so it only runs where a secret is actually available
+# (push to main, manual dispatch, or the weekly schedule) — never on an external PR,
+# which wouldn't have the secret anyway, and never on every commit, which would burn
+# API cost for no reason. This mirrors the same "cheap deterministic checks vs. real
+# API calls" split as career_copilot/eval/metrics.py vs. groundedness_judge.py.
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC — catches silent regressions
+      # (a model swap, an upstream langgraph/langchain release) without spending API
+      # cost on every commit.
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: pip install -e .
+      - run: pytest -m "not requires_api"
+
+  eval-gate:
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: pip install -e .
+      - run: python scripts/build_index.py
+      - run: python scripts/run_evals.py
