@@ -191,4 +191,5 @@ def gap_analysis(
         # JD's requirement count, not a global "just retry more" change.
         max_retries=4,
         validate=lambda report: _validate_gap_report(report, valid_ids),
+        node_name="gap_analysis",
     )

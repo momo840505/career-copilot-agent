@@ -13,6 +13,14 @@
 # markdown files under src/career_copilot/data/portfolio/).
 set -e
 
+# Phase 7e: structured (one-JSON-object-per-line) logs in the container by default --
+# see career_copilot/observability.py. Render's Logs tab just tails stdout, so this is
+# what makes those lines greppable/parseable instead of free-text. Local dev (running
+# scripts/run_api.py directly, never through this script) keeps the human-readable
+# default. Override with -e LOG_FORMAT=plain on `docker run` if you want to read
+# container logs by eye instead.
+export LOG_FORMAT="${LOG_FORMAT:-json}"
+
 CHROMA_DIR="${CHROMA_DB_DIR:-/app/chroma_db}"
 INDEX_MARKER="$CHROMA_DIR/chroma.sqlite3"
 

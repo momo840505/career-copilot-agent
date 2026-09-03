@@ -8,11 +8,14 @@ same helper, so the retry-with-feedback behavior only has to be built and tested
 from __future__ import annotations
 
 import logging
+import time
 from typing import Callable, TypeVar
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from pydantic import BaseModel
+
+from career_copilot.observability import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -53,12 +56,36 @@ def _with_bumped_temperature(llm: BaseChatModel) -> BaseChatModel:
         return llm
 
 
+def _log_success(node_name: str, attempt: int, stuck_ever: bool, started_at: float) -> None:
+    """Shared tail for both success returns below: one INFO log line plus a metrics
+    update, so a clean first-try success and a success-after-repair both show up in
+    GET /metrics (attempts > 1 means it needed a repair; stuck_ever means it hit the
+    STUCK path along the way) without duplicating this at every return site."""
+    duration_ms = (time.monotonic() - started_at) * 1000
+    metrics.record_llm_call(
+        node_name,
+        attempts=attempt,
+        stuck_occurred=stuck_ever,
+        succeeded=True,
+        duration_ms=duration_ms,
+    )
+    logger.info(
+        "invoke_structured: node=%s succeeded on attempt %d (%.0fms)%s",
+        node_name,
+        attempt,
+        duration_ms,
+        " after a STUCK retry" if stuck_ever else "",
+        extra={"node": node_name, "attempt": attempt, "duration_ms": round(duration_ms, 1), "stuck_occurred": stuck_ever},
+    )
+
+
 def invoke_structured(
     llm: BaseChatModel,
     schema: type[T],
     messages: list[BaseMessage],
     max_retries: int = 2,
     validate: Callable[[T], T] | None = None,
+    node_name: str = "unknown",
 ) -> T:
     """Invoke `llm`, constrained to `schema`, with up to `max_retries` repair attempts.
 
@@ -88,6 +115,12 @@ def invoke_structured(
     stuck, make a different decision" note (_STUCK_RETRY_NOTE) AND runs at a bumped
     temperature (_with_bumped_temperature) to actually break the determinism, not just
     ask nicely.
+
+    `node_name` is purely for observability (career_copilot/observability.py): it
+    labels this call in structured logs and in the per-node breakdown GET /metrics
+    returns, so an operator can tell "gap_analysis is the one burning retries" from
+    "draft_writer is". It has no effect on behavior — callers that omit it still work
+    exactly as before, just bucketed under "unknown".
     """
     structured_llm = llm.with_structured_output(schema)
     base_messages = list(messages)
@@ -95,6 +128,8 @@ def invoke_structured(
     last_error: Exception | None = None
     last_error_text: str | None = None
     stuck = False
+    stuck_ever = False
+    started_at = time.monotonic()
 
     for attempt in range(1, max_retries + 2):  # 1 initial try + max_retries repairs
         current_structured_llm = (
@@ -108,6 +143,7 @@ def invoke_structured(
             last_error = e
             error_text = str(e)
             stuck = last_error_text is not None and error_text == last_error_text
+            stuck_ever = stuck_ever or stuck
             last_error_text = error_text
             logger.warning(
                 "invoke_structured: attempt %d/%d failed schema parsing%s: %s",
@@ -115,6 +151,7 @@ def invoke_structured(
                 max_retries + 1,
                 " (STUCK — repeats previous error)" if stuck else "",
                 e,
+                extra={"node": node_name, "attempt": attempt, "stuck": stuck, "failure_kind": "schema"},
             )
             attempt_messages = base_messages + [
                 HumanMessage(
@@ -130,14 +167,18 @@ def invoke_structured(
             continue
 
         if validate is None:
+            _log_success(node_name, attempt, stuck_ever, started_at)
             return result  # type: ignore[return-value]
 
         try:
-            return validate(result)
+            validated = validate(result)
+            _log_success(node_name, attempt, stuck_ever, started_at)
+            return validated
         except Exception as e:  # noqa: BLE001 - deliberately broad, see docstring
             last_error = e
             error_text = str(e)
             stuck = last_error_text is not None and error_text == last_error_text
+            stuck_ever = stuck_ever or stuck
             last_error_text = error_text
             logger.warning(
                 "invoke_structured: attempt %d/%d failed extra validation%s: %s",
@@ -145,6 +186,7 @@ def invoke_structured(
                 max_retries + 1,
                 " (STUCK — repeats previous error)" if stuck else "",
                 e,
+                extra={"node": node_name, "attempt": attempt, "stuck": stuck, "failure_kind": "validate"},
             )
             # Crucial: show the model its OWN previous (schema-valid but rule-violating)
             # output before the error, so the next attempt is a targeted edit — not a
@@ -166,6 +208,20 @@ def invoke_structured(
                 ),
             ]
 
+    duration_ms = (time.monotonic() - started_at) * 1000
+    metrics.record_llm_call(
+        node_name,
+        attempts=max_retries + 1,
+        stuck_occurred=stuck_ever,
+        succeeded=False,
+        duration_ms=duration_ms,
+    )
+    logger.error(
+        "invoke_structured: node=%s exhausted %d attempts, giving up",
+        node_name,
+        max_retries + 1,
+        extra={"node": node_name, "attempts": max_retries + 1, "stuck_occurred": stuck_ever},
+    )
     raise StructuredOutputError(
         f"Failed to get valid {schema.__name__} output after "
         f"{max_retries + 1} attempts. Last error: {last_error}"

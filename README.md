@@ -202,6 +202,35 @@ the `mcp[cli]` **v2.x** API (`from mcp.server import MCPServer`); see the other
 engineering note below for why that's pinned explicitly rather than left as
 `mcp>=1.0.0`.
 
+## Observability (Phase 7e)
+
+Two small additions, both in `src/career_copilot/observability.py`, wired into the
+FastAPI app (`api/app.py`) and the shared `invoke_structured` retry loop
+(`graph/structured.py`) that every LLM node goes through:
+
+**Structured logging.** Every HTTP request (a middleware wraps the whole app) and
+every LLM call (parse_jd / gap_analysis / draft_writer / critic, each labeled by
+`node_name`) logs one line with method/path/status/duration or node/attempt/duration —
+plus, critically, whether that call hit the STUCK-retry path described in the Phase 5
+engineering note below. `LOG_FORMAT=json` (the Docker image's default — see
+`docker/entrypoint.sh`) switches this to one parseable JSON object per line, which is
+what actually matters on Render: its Logs tab just tails stdout, so JSON-per-line is
+the difference between "grep-able" and "a wall of free text." Local dev keeps a plain
+human-readable format by default.
+
+**`GET /metrics`.** A process-wide, thread-safe, **in-memory** counter registry — no
+database, no Prometheus, no external service. That's a deliberate match to the
+deployment, not a shortcut: Render's free tier runs exactly one instance with an
+ephemeral filesystem, so anything that tried to persist metrics across restarts would
+be solving a problem this deployment doesn't actually have. It answers the two
+questions worth asking first when something looks wrong — is the API taking traffic
+and erroring (per-route count / avg latency / status-code breakdown), and is the LLM
+pipeline healthy or burning retries (per-node call / retry / **STUCK** / failure
+counts). Deliberately left open (no access-code gate, like `/health`): it exposes only
+aggregate counts and latencies — no JD text, no letters, nothing tied to a specific
+`client_id` — so gating it would only make it harder to check the service's health
+without protecting anything actually sensitive.
+
 ## Tech stack
 
 Python, LangGraph, LangChain, OpenAI API, ChromaDB, Pydantic, FastAPI, MCP, Docker,

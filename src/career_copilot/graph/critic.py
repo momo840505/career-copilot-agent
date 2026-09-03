@@ -107,4 +107,4 @@ def critic(
             )
         ),
     ]
-    return invoke_structured(llm, CriticVerdict, messages)
+    return invoke_structured(llm, CriticVerdict, messages, node_name="critic")

@@ -124,4 +124,5 @@ def draft_writer(
         CoverLetterDraft,
         messages,
         validate=lambda draft: check_claims_cite_real_evidence(draft, valid_ids),
+        node_name="draft_writer",
     )

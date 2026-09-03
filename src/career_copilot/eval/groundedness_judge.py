@@ -79,7 +79,7 @@ def judge_groundedness(
     votes: list[float] = []
     rationales: list[str] = []
     for _ in range(n_votes):
-        result = invoke_structured(llm, GroundednessScore, messages)
+        result = invoke_structured(llm, GroundednessScore, messages, node_name="groundedness_judge")
         votes.append(result.score)
         rationales.append(result.rationale)
 

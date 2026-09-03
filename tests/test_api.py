@@ -88,6 +88,39 @@ def test_health_reports_ok_and_key_configured_flag_and_needs_no_client_id():
     assert "api_key_configured" in body
 
 
+# --- Phase 7e: GET /metrics ---
+
+
+def test_metrics_returns_200_with_expected_shape_and_needs_no_client_id():
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    body = response.json()
+    assert "uptime_seconds" in body
+    assert "routes" in body
+    assert "llm_nodes" in body
+
+
+def test_metrics_stays_open_even_when_an_access_code_is_configured():
+    # Same reasoning as /health: it's an ops endpoint (aggregate counts/latencies
+    # only, nothing client-specific), not a data endpoint, so it must not join the
+    # require_access_code gate the way /gap-analysis, /draft, and /history do.
+    _with_access_code("secret123")
+    try:
+        response = client.get("/metrics")
+        assert response.status_code == 200
+    finally:
+        _clear_access_code_override()
+
+
+def test_metrics_reflects_requests_recorded_by_the_logging_middleware():
+    before = client.get("/metrics").json()["routes"].get("/health", {}).get("count", 0)
+    client.get("/health")
+    after = client.get("/metrics").json()["routes"].get("/health", {}).get("count", 0)
+    # +1 for the /health call itself; the two /metrics calls bracketing it land in
+    # their own "/metrics" bucket, not "/health"'s, so they don't also bump this count.
+    assert after == before + 1
+
+
 def test_gap_analysis_maps_pipeline_result_to_response_fields(monkeypatch):
     monkeypatch.setattr(app_module, "run_parse_jd", lambda jd_text, settings: _jd())
     monkeypatch.setattr(app_module, "run_retrieve_evidence", lambda jd, settings: [_bundle()])

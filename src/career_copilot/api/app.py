@@ -15,14 +15,21 @@ Phase 7 additions: every route except /health and /auth/verify requires the shar
 access code (api/auth.py) once ACCESS_CODE is set, and /gap-analysis + /draft now
 persist a record of each successful call to SQLite (api/db.py) for the frontend's
 history view.
+
+Phase 7e addition: structured logging (career_copilot/observability.py) is configured
+at import time, below -- before `app = FastAPI(...)` runs, so even startup-time log
+lines (e.g. from init_db in lifespan) go through it. A request-logging middleware and
+GET /metrics expose the same module's in-process counters.
 """
 from __future__ import annotations
 
+import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -35,13 +42,18 @@ from career_copilot.graph.parse_jd import parse_jd as run_parse_jd
 from career_copilot.graph.pipeline import run_pipeline
 from career_copilot.graph.retrieve_evidence import retrieve_evidence as run_retrieve_evidence
 from career_copilot.graph.structured import StructuredOutputError
+from career_copilot.observability import configure_logging, metrics
 from career_copilot.schemas.draft import Claim
 from career_copilot.schemas.gap import GapItem
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db(get_settings().history_db_path)
+    logger.info("startup complete", extra={"history_db": str(get_settings().history_db_path)})
     yield
 
 
@@ -66,6 +78,41 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_and_record_requests(request: Request, call_next):
+    """Every request through one place: one structured log line + one metrics update,
+    regardless of which route handled it (or whether it 500'd). `request.url.path` is
+    used as the metrics/log key rather than a route template (e.g. "/history/{id}")
+    because FastAPI only resolves the matched route AFTER this middleware runs; that's
+    fine at this traffic scale (history IDs are UUIDs, so they won't collapse into a
+    misleadingly "popular" single bucket the way a numeric ID might, and a portfolio
+    demo doesn't have enough unique history records for that to matter anyway).
+    """
+    started_at = time.monotonic()
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        duration_ms = (time.monotonic() - started_at) * 1000
+        status_code = response.status_code if response is not None else 500
+        metrics.record_request(request.url.path, status_code, duration_ms)
+        logger.info(
+            "%s %s -> %d (%.0fms)",
+            request.method,
+            request.url.path,
+            status_code,
+            duration_ms,
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": status_code,
+                "duration_ms": round(duration_ms, 1),
+                "client_id": request.headers.get("x-client-id"),
+            },
+        )
 
 
 # --- request/response models ---
@@ -119,6 +166,18 @@ def health() -> dict:
     without the code in hand."""
     settings = get_settings()
     return {"status": "ok", "api_key_configured": bool(settings.openai_api_key)}
+
+
+@app.get("/metrics")
+def metrics_snapshot() -> dict:
+    """No access code required, same reasoning as /health: this is an ops endpoint,
+    not a data endpoint. It exposes aggregate counts and latencies only -- no JD text,
+    no cover letters, no access codes, nothing tied to an individual client_id -- so
+    unlike /gap-analysis, /draft, and /history, gating it behind the shared code would
+    only make it harder to check the service's health, not protect anything sensitive.
+    Resets to zero on every process restart (in-memory only -- see observability.py).
+    """
+    return metrics.snapshot()
 
 
 @app.post("/auth/verify")

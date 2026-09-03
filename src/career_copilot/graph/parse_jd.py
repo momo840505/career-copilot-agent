@@ -34,4 +34,4 @@ def parse_jd(jd_text: str, settings: Settings | None = None) -> JDRequirements:
         SystemMessage(content=_SYSTEM_PROMPT),
         HumanMessage(content=f"Job description:\n\n{jd_text.strip()}"),
     ]
-    return invoke_structured(llm, JDRequirements, messages)
+    return invoke_structured(llm, JDRequirements, messages, node_name="parse_jd")
