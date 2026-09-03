@@ -1,19 +1,72 @@
-# Career Copilot Agent
+<div align="center">
+
+# 💼 Career Copilot Agent
+
+### RAG-Grounded Gap Analysis & Self-Correcting Cover Letters — an Agentic LLM System
+
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-Agent%20Orchestration-1C3C3C)
+![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-412991?logo=openai&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-18.3-61DAFB?logo=react&logoColor=black)
+![Docker](https://img.shields.io/badge/Docker-Multi--stage%20build-2496ED?logo=docker&logoColor=white)
+
+[![CI](https://github.com/momo840505/career-copilot-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/momo840505/career-copilot-agent/actions/workflows/ci.yml)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Open%20App-2EA44F?logo=render&logoColor=white)](https://career-copilot-agent.onrender.com)
+![Status](https://img.shields.io/badge/Status-Live-2EA44F)
 
 A multi-agent job-application assistant that reads a job description, checks it against
 my own resume + portfolio (via RAG), tells me honestly where I match and where I don't,
 and drafts a grounded, citation-checked cover letter — with a human approval step before
 anything goes out.
 
+[Overview](#-overview) •
+[Live Demo](#-live-demo) •
+[Architecture](#-architecture) •
+[Setup](#-setup) •
+[Evals](#-evals) •
+[API and MCP Server](#-api-and-mcp-server) •
+[Deployment](#-deployment) •
+[Observability](#-observability) •
+[Engineering Notes](#-engineering-notes)
+
+</div>
+
+---
+
+## 📌 Table of Contents
+
+- [Overview](#-overview)
+- [Why This Exists](#-why-this-exists)
+- [Live Demo](#-live-demo)
+- [Architecture](#-architecture)
+- [Build Roadmap](#-build-roadmap)
+- [Setup](#-setup)
+- [Evals](#-evals)
+- [API and MCP Server](#-api-and-mcp-server)
+- [Deployment](#-deployment)
+- [Observability](#-observability)
+- [Tech Stack](#-tech-stack)
+- [Engineering Notes](#-engineering-notes)
+- [Skills Demonstrated](#-skills-demonstrated)
+
+---
+
+# 🚀 Overview
+
 This is the 6th project in my data science / AI engineering portfolio. Where the other five
 (`retail-demand-forecasting`, `cyber-risk-intelligence-lakehouse`, `gamewise-ai`,
 `smart-hydro-alert`, `flight-reliability-platform`) cover classic ML, data engineering, NLP
 retrieval, and IoT streaming, this one is deliberately an **agentic LLM system**: multi-step
 planning, structured-output validation, self-correction loops, human-in-the-loop, evals for
-generative output (not just accuracy metrics), and an MCP server — the pieces the other five
-don't touch.
+generative output (not just accuracy metrics), an MCP server, a full React frontend, and a
+live Docker deployment — the pieces the other five don't touch.
 
-## Why this exists (skills gap it closes)
+---
+
+# 🧠 Why This Exists
+
+Skills gap it closes relative to the rest of the portfolio:
 
 | Already demonstrated elsewhere | New in this project |
 |---|---|
@@ -23,8 +76,71 @@ don't touch.
 | Dashboards or CI for data pipelines | **Evals for generative output** (golden set, LLM-as-judge, CI gate) |
 | — | **Human-in-the-loop** approval checkpoint |
 | — | **MCP server** exposing the agent's tools to any MCP client |
+| — | **Production observability** (structured logs, `/metrics`) on a live deployment |
 
-## Architecture
+---
+
+# 🌐 Live Demo
+
+### [🧭 Open Career Copilot Agent](https://career-copilot-agent.onrender.com)
+
+Paste in a real job description and watch the full pipeline run against my actual resume
+and project write-ups — gap analysis, then a grounded cover letter with a critic verdict.
+
+> **Free-tier hosting note:** the Render instance spins down after 15 minutes of
+> inactivity. The first request after a while can take 30-60 seconds to wake back up —
+> if the first load times out, just retry once the instance is warm. Access is gated
+> behind a shared access code (keeps my OpenAI bill from being open to the entire
+> internet) — reach out if you'd like a demo login.
+
+### Job description input
+
+![JD input form, with an example JD loaded and a live character counter](docs/images/jd_form.png)
+
+### Gap analysis — fit score, matched / partial / missing, with evidence citations
+
+![Gap analysis result showing a 60% fit score ring, matched/partial/missing counts, and cited evidence per requirement](docs/images/gap_analysis_result.png)
+
+### Cover letter — self-correction loop passed on the first attempt
+
+![Cover letter result showing "Critic: passed, 0 revisions" and inline evidence citations](docs/images/cover_letter_result.png)
+
+### History — every run is saved per access-code client
+
+![History tab listing a cover letter run and a gap analysis run with timestamps](docs/images/history.png)
+
+---
+
+# 🏗️ Architecture
+
+### System overview (frontend, API, deployment)
+
+```mermaid
+flowchart TB
+    subgraph Client["🖥️ Browser"]
+        UI["React SPA — JD form / results / history"]
+    end
+
+    subgraph Server["🐳 Render — single Docker container"]
+        Auth["access-code gate\nX-Access-Code / X-Client-Id"]
+        API["FastAPI\nsame-origin: serves built frontend + JSON API"]
+        Graph["LangGraph pipeline\nparse_jd → retrieve_evidence → gap_analysis → draft_writer ⇄ critic"]
+        Chroma[("ChromaDB\nresume + 5 project write-ups")]
+        SQLite[("SQLite\nper-client history")]
+        Obs["observability.py\nstructured logs + /metrics"]
+    end
+
+    OpenAI[["OpenAI API\nchat + embeddings"]]
+
+    UI -->|HTTPS| Auth --> API
+    API --> Graph
+    Graph --> Chroma
+    Graph --> OpenAI
+    API --> SQLite
+    API -.-> Obs
+```
+
+### Agent pipeline (inside the LangGraph node)
 
 ```mermaid
 flowchart LR
@@ -38,7 +154,9 @@ flowchart LR
     G --> H[final cover letter / talking points]
 ```
 
-## Build roadmap
+---
+
+# 🛣️ Build Roadmap
 
 - [x] Phase 0 — repo scaffold, environment
 - [x] Phase 1 — RAG corpus (resume + 5 project write-ups) + retrieval
@@ -48,9 +166,17 @@ flowchart LR
 - [x] Phase 4b — wired into an actual LangGraph `StateGraph` (conditional loop + `interrupt()` human-in-the-loop)
 - [x] Phase 5 — eval harness (golden JD set, objective metrics + groundedness judge) + GitHub Actions CI
 - [x] Phase 6 — FastAPI service + MCP server
-- [ ] Phase 7 — Docker + cloud deploy + observability + final write-up
+- [x] Phase 7 — Docker + cloud deploy + observability + final write-up
+  - [x] 7a — SQLite history + shared access-code gate
+  - [x] 7b — React frontend SPA
+  - [x] 7c — Docker packaging (multi-stage, frontend + backend in one image)
+  - [x] 7d — Render deployment (live)
+  - [x] 7e — Observability (structured logging + `/metrics`)
+  - [x] 7f — README polish, screenshots, final architecture diagram
 
-## Setup (Windows / PowerShell)
+---
+
+# ⚙️ Setup
 
 ```powershell
 cd career-copilot-agent
@@ -108,6 +234,10 @@ mcp run src/career_copilot/mcp_server.py --transport streamable-http
 # you want the interactive inspector specifically:
 pip install uv
 mcp dev src/career_copilot/mcp_server.py --with-editable .
+
+# Phase 7c/7d: build and run the same Docker image the live deployment uses
+docker build -t career-copilot .
+docker run --rm -p 8000:8000 --env-file .env career-copilot
 ```
 
 > Tip: if your project folder path contains Chinese characters (e.g. under `Desktop\作品集\`),
@@ -116,7 +246,9 @@ mcp dev src/career_copilot/mcp_server.py --with-editable .
 > while the source code stays in your normal folder. Most tools handle Unicode paths fine now,
 > but this is the first thing to try if `pip install` or `chromadb` complain.
 
-## Evals (Phase 5)
+---
+
+# 🧪 Evals
 
 `src/career_copilot/data/golden_jds/` holds 3 fixed job descriptions chosen to stress
 different parts of the system: a strong-fit data-analyst role (expect mostly `matched`),
@@ -148,7 +280,7 @@ want CI to use the same model choices as your local `.env` — `ci.yml` falls ba
 own recommendation. See the matching engineering note below for why that fallback
 exists — it's not a hypothetical.
 
-### Known limitations, and why this is by design
+## ⚠️ Known Limitations, and Why This Is by Design
 
 No LLM-based system — this one included — can guarantee it never makes a questionable
 call on a brand-new input; a "100% success rate" claim for a system like this would be a
@@ -174,21 +306,24 @@ occasionally exhausts `draft_writer`'s retry budget and fails — cleanly, with 
 `StructuredOutputError` and no bad citation ever shipped. That's the accepted, expected
 shape of "safe failure" this section describes, not a bug still being chased.
 
-## API & MCP server (Phase 6)
+---
+
+# 🔌 API and MCP Server
 
 Two thin entry points over the same pipeline everything else in this project calls —
 neither duplicates any pipeline logic, they just expose it differently.
 
 **FastAPI service** (`src/career_copilot/api/app.py`, launched via
 `python scripts/run_api.py`): `GET /health` (no LLM call — confirms the service is up
-and an API key is configured), `POST /gap-analysis` (parse -> retrieve -> gap analysis),
-and `POST /draft` (the full pipeline, draft/critic loop included — no human-in-the-loop
-approval over HTTP, unlike `graph_demo.py`'s interactive run; the caller is expected to
-check `critic_passed` / `critic_issues` before using the draft for anything, per the
-"Known limitations" section above). A `StructuredOutputError` — every repair attempt in
-`invoke_structured`'s retry loop exhausted — is mapped to `502 Bad Gateway`, not
-`400/422`: the request itself was fine, an upstream dependency (the LLM) is what failed
-to deliver. Interactive docs at `/docs` once it's running.
+and an API key is configured), `GET /metrics` (see [Observability](#-observability)),
+`POST /gap-analysis` (parse -> retrieve -> gap analysis), and `POST /draft` (the full
+pipeline, draft/critic loop included — no human-in-the-loop approval over HTTP, unlike
+`graph_demo.py`'s interactive run; the caller is expected to check `critic_passed` /
+`critic_issues` before using the draft for anything, per the "Known Limitations" section
+above). A `StructuredOutputError` — every repair attempt in `invoke_structured`'s retry
+loop exhausted — is mapped to `502 Bad Gateway`, not `400/422`: the request itself was
+fine, an upstream dependency (the LLM) is what failed to deliver. Interactive docs at
+`/docs` once it's running.
 
 **MCP server** (`src/career_copilot/mcp_server.py`): exposes `search_evidence`,
 `analyze_job_description`, and `draft_cover_letter` as MCP tools, so any MCP-aware
@@ -202,7 +337,42 @@ the `mcp[cli]` **v2.x** API (`from mcp.server import MCPServer`); see the other
 engineering note below for why that's pinned explicitly rather than left as
 `mcp>=1.0.0`.
 
-## Observability (Phase 7e)
+---
+
+# 🐳 Deployment
+
+The live demo above runs from a single Docker image that packages both halves of the
+project — no separate frontend host, no separate API host.
+
+**Multi-stage `Dockerfile`:** stage 1 (`node:22-slim`) runs `npm install && npm run
+build` on `frontend/`, producing static assets; stage 2 (`python:3.11-slim`) installs
+the backend, then `COPY --from=frontend-build` pulls in the built `dist/` folder. FastAPI
+mounts it as a `StaticFiles(..., html=True)` route at `"/"` — registered *after* every
+API route, since Starlette matches routes in registration order and a mount at `"/"`
+would otherwise shadow everything (see `api/app.py`'s comment on this). The result: one
+container, one port, same-origin frontend and API — no CORS complexity in production.
+
+**`docker/entrypoint.sh`:** Render's free tier gives the container an ephemeral
+filesystem, so the Chroma RAG index has to be rebuilt on every boot — the entrypoint does
+that automatically, but skips it if an index is already present on disk (e.g. a local
+`docker run` with a mounted volume), so it doesn't re-pay OpenAI embedding costs on every
+restart for nothing.
+
+**`render.yaml`:** a committed Render Blueprint — `runtime: docker`, points straight at
+this repo's `Dockerfile`, `healthCheckPath: /health`. `OPENAI_API_KEY` and `ACCESS_CODE`
+are marked `sync: false` so Render prompts for them in its own dashboard instead of ever
+living in this (public) repo. This file is both how the live deployment is actually
+configured and a checked-in record of it — worth more in a portfolio than a screenshot of
+a dashboard nobody else can see.
+
+**Free-tier reality, not glossed over:** Render's free plan spins the instance down after
+15 minutes of no traffic and takes 30-60 seconds to wake it back up on the next request —
+see the note in [Live Demo](#-live-demo) above. This is a deliberate, disclosed trade-off
+for a $0/month personal-project deployment, not a hidden limitation.
+
+---
+
+# 📈 Observability
 
 Two small additions, both in `src/career_copilot/observability.py`, wired into the
 FastAPI app (`api/app.py`) and the shared `invoke_structured` retry loop
@@ -229,14 +399,47 @@ pipeline healthy or burning retries (per-node call / retry / **STUCK** / failure
 counts). Deliberately left open (no access-code gate, like `/health`): it exposes only
 aggregate counts and latencies — no JD text, no letters, nothing tied to a specific
 `client_id` — so gating it would only make it harder to check the service's health
-without protecting anything actually sensitive.
+without protecting anything actually sensitive. Try it live:
+**[career-copilot-agent.onrender.com/metrics](https://career-copilot-agent.onrender.com/metrics)**
 
-## Tech stack
+---
 
-Python, LangGraph, LangChain, OpenAI API, ChromaDB, Pydantic, FastAPI, MCP, Docker,
-GitHub Actions, pytest.
+# 🧰 Tech Stack
 
-## Engineering notes / bugs caught during development
+## Agent orchestration and LLM engineering
+
+- LangGraph (`StateGraph`, conditional edges, `interrupt()` human-in-the-loop)
+- LangChain (`with_structured_output`, chat model abstraction)
+- OpenAI API (chat completions + embeddings)
+- Pydantic (structured-output schemas, validate-and-retry)
+
+## RAG and retrieval
+
+- ChromaDB (persistent vector store)
+- Chunked resume + 5 project write-ups as the retrieval corpus
+- Enforced citation checking (no chunk_id, no claim)
+
+## API and frontend
+
+- FastAPI (JSON API + same-origin static frontend host)
+- React 18 + Vite (SPA, hand-rolled inline SVG icons, no icon-library dependency)
+- MCP (`mcp[cli]` v2.x) server exposing the same pipeline as agent tools
+- SQLite (per-client history)
+
+## DevOps and deployment
+
+- Docker (multi-stage: Node build stage + Python runtime stage)
+- Render (Blueprint deploy, `render.yaml`)
+- GitHub Actions (`ci.yml`: unit tests every push, golden-set eval-gate on `main`)
+
+## Testing and quality
+
+- pytest, with a fake-LLM harness for retry-loop logic (no API key needed)
+- A 3-JD golden eval set with both hard, deterministic gates and an LLM-as-judge score
+
+---
+
+# 📝 Engineering Notes
 
 Keeping a running log here — this is exactly the kind of "I broke it, here's how I found
 it and fixed it" material that makes for a strong interview story (see the target-leakage
@@ -482,7 +685,7 @@ catch on `cyber-risk-intelligence-lakehouse` for the same idea applied to an ML 
   budget from 2 to 4, sized to the actual problem (more surface area needs more attempts), while
   every other node keeps the default. This is where Phase 5 stops, on purpose: chasing full
   determinism on every possible JD has no finish line for an LLM-based system, and isn't actually
-  the right goal — see "Known limitations" above for what the actual goal is instead, and why a
+  the right goal — see "Known Limitations" above for what the actual goal is instead, and why a
   system that sometimes needs a retry (and says so clearly when it does) is a stronger, more
   honest result than a claim of zero failures ever would be.
 
@@ -626,3 +829,75 @@ catch on `cyber-risk-intelligence-lakehouse` for the same idea applied to an ML 
   the space of JDs that could. A golden set that runs on every push is what turned "seems fixed" into
   "still broken, on a case I hadn't tried" — automatically, unattended, weeks after the original fix
   — instead of leaving it to be rediscovered by a real user.
+
+- **Phase 7d — a "Not Found" on a fully successful deploy was a stale browser tab, not a broken
+  mount.** After the first Render Blueprint deploy went "Live", the actual URL showed a plain-text
+  `Not Found` page. Two candidate explanations existed at that point: the `StaticFiles(..., html=
+  True)` mount in `api/app.py` genuinely wasn't finding `index.html` (it would return exactly this
+  plain-text 404 — distinct from FastAPI's own JSON `{"detail": ...}` 404 for an unmatched route,
+  which is what made this diagnosable at all), or something else entirely. Reading the actual
+  Render build log settled it before guessing further: the frontend build stage completed
+  (`dist/index.html` produced and copied into the image), and the runtime log already showed `GET /
+  HTTP/1.1" 200 OK` with `==> Your service is live 🎉` — the deploy had, in fact, fully succeeded.
+  The `Not Found` screenshot was a stale/cached response from before that deploy finished. A hard
+  refresh confirmed it: the live site loaded correctly, and a real gap-analysis run against the
+  deployed backend returned a full result. General lesson: when a symptom and a log disagree, trust
+  the log — a build/runtime log is ground truth for what the server actually did; a browser tab can
+  be showing you the past.
+
+- **Phase 7e — the observability layer had to be verified two different ways, because neither
+  alone was authoritative.** `observability.py` is pure standard library (no LangChain, no
+  FastAPI), so its JSON-log formatting and metrics-aggregation logic could be genuinely executed
+  and asserted against in the sandbox this was built in — real code, real output, not a read-through.
+  But the FastAPI wiring around it (the request-logging middleware, `GET /metrics`) couldn't be:
+  that sandbox has no network access to install `fastapi`, the same restriction that blocked a real
+  `docker build` back in Phase 7c. The honest resolution wasn't to skip verification, or to claim
+  a level of confidence the setup didn't support — it was to verify what could actually run there,
+  document what couldn't, and let the two things that *are* authoritative confirm the rest once
+  pushed: the real `eval-gate` CI (full dependencies, runs the whole test suite for real) and the
+  live Render deployment itself. Both did: CI passed, and `GET /metrics` on the live URL came back
+  showing real accumulated route counts within 90 seconds of the new container's boot — the new
+  code wasn't just present in the image, it was already doing its job in production. General
+  lesson: "I can't fully verify this here" is a fine thing to say out loud, as long as it's paired
+  with a concrete plan for what *will* verify it, and that plan gets followed through rather than
+  left as a promise.
+
+---
+
+# 🎯 Skills Demonstrated
+
+This project demonstrates practical experience with:
+
+### Agentic AI and LLM engineering
+
+- Multi-step agent orchestration with LangGraph (`StateGraph`, conditional edges)
+- Structured-output validation and self-healing retry loops (Pydantic + LangChain)
+- Self-correction loops (writer ⇄ critic) with accumulated feedback history
+- Human-in-the-loop approval via `interrupt()` / `Command(resume=...)`
+- Prompt engineering informed by root-cause debugging, not trial and error
+
+### RAG and retrieval
+
+- Vector-store-backed retrieval (ChromaDB) over a real, chunked document corpus
+- Anti-hallucination citation enforcement (every claim traces to a real chunk_id)
+- Evidence-formatting design that shapes what a downstream LLM step can and can't do
+
+### Evals for generative AI
+
+- A golden-JD eval set covering strong-fit, weak-fit, and mixed-fit cases on purpose
+- Objective, deterministic hard gates alongside a spread-aware LLM-as-judge score
+- A CI gate that has caught real, previously-"fixed" regressions automatically
+
+### Software engineering and APIs
+
+- FastAPI service design (error-code mapping, dependency injection, same-origin static hosting)
+- An MCP server exposing the same pipeline as agent-callable tools
+- React 18 + Vite SPA, hand-rolled UI (no icon-library dependency)
+- SQLite-backed per-client history with a shared access-code auth gate
+
+### DevOps, deployment, and observability
+
+- Multi-stage Docker builds (Node build stage + Python runtime stage, one final image)
+- Blueprint-based cloud deployment (Render, `render.yaml`, committed config)
+- Structured JSON logging and an in-process `/metrics` endpoint sized to the actual deployment
+- Root-causing real production symptoms (a stale "Not Found," CI regressions) from logs, not guesses
