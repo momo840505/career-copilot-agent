@@ -158,7 +158,7 @@ flowchart TB
     E --> F{"critic<br/>grounded? on-tone?"}
     F -- fails --> E
     F -- passes --> G["human_review<br/>pause for approval"]
-    G --> H["final cover letter /> talking points"]
+    G --> H["final cover letter <br/> talking points"]
 ```
 
 ---
