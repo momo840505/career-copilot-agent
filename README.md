@@ -22,8 +22,8 @@ anything goes out.
 
 [Overview](#-overview) •
 [Live Demo](#-live-demo) •
-[Architecture](#-architecture) •
-[Setup](#-setup) •
+[Architecture](#️-architecture) •
+[Setup](#️-setup) •
 [Evals](#-evals) •
 [API and MCP Server](#-api-and-mcp-server) •
 [Deployment](#-deployment) •
@@ -39,9 +39,9 @@ anything goes out.
 - [Overview](#-overview)
 - [Why This Exists](#-why-this-exists)
 - [Live Demo](#-live-demo)
-- [Architecture](#-architecture)
-- [Build Roadmap](#-build-roadmap)
-- [Setup](#-setup)
+- [Architecture](#️-architecture)
+- [Build Roadmap](#️-build-roadmap)
+- [Setup](#️-setup)
 - [Evals](#-evals)
 - [API and MCP Server](#-api-and-mcp-server)
 - [Deployment](#-deployment)
@@ -117,20 +117,20 @@ and project write-ups — gap analysis, then a grounded cover letter with a crit
 
 ```mermaid
 flowchart TB
-    subgraph Client["🖥️ Browser"]
-        UI["React SPA — JD form / results / history"]
+    subgraph Client["Browser"]
+        UI["React SPA"]
     end
 
-    subgraph Server["🐳 Render — single Docker container"]
-        Auth["access-code gate\nX-Access-Code / X-Client-Id"]
-        API["FastAPI\nsame-origin: serves built frontend + JSON API"]
-        Graph["LangGraph pipeline\nparse_jd → retrieve_evidence → gap_analysis → draft_writer ⇄ critic"]
-        Chroma[("ChromaDB\nresume + 5 project write-ups")]
-        SQLite[("SQLite\nper-client history")]
-        Obs["observability.py\nstructured logs + /metrics"]
+    subgraph Server["Render - single Docker container"]
+        Auth["Access-code gate"]
+        API["FastAPI"]
+        Graph["LangGraph pipeline"]
+        Chroma[("ChromaDB")]
+        SQLite[("SQLite")]
+        Obs["observability.py"]
     end
 
-    OpenAI[["OpenAI API\nchat + embeddings"]]
+    OpenAI[["OpenAI API"]]
 
     UI -->|HTTPS| Auth --> API
     API --> Graph
@@ -140,18 +140,25 @@ flowchart TB
     API -.-> Obs
 ```
 
+`Auth` checks `X-Access-Code` / `X-Client-Id` on every route but `/health` and
+`/metrics`. `API` is FastAPI serving both the built React frontend and the JSON
+routes from the same origin. `Graph` is the LangGraph pipeline below, which calls
+`Chroma` for retrieval and `OpenAI` for every LLM step. `SQLite` holds per-client
+history; `Obs` (dotted line — logging only, not a request path) is
+`observability.py`'s structured logs + `/metrics`.
+
 ### Agent pipeline (inside the LangGraph node)
 
 ```mermaid
 flowchart LR
-    A[Job description] --> B[parse_jd\nstructured output]
-    B --> C[retrieve_evidence\nRAG over resume + 5 projects]
-    C --> D[gap_analysis\nmatched / partial / missing]
-    D --> E[draft_writer\ncites chunk ids]
-    E --> F{critic\ngrounded? on-tone?}
+    A["Job description"] --> B["parse_jd<br/>structured output"]
+    B --> C["retrieve_evidence<br/>RAG over resume + 5 projects"]
+    C --> D["gap_analysis<br/>matched / partial / missing"]
+    D --> E["draft_writer<br/>cites chunk ids"]
+    E --> F{"critic<br/>grounded? on-tone?"}
     F -- fails --> E
-    F -- passes --> G[human_review\npause for approval]
-    G --> H[final cover letter / talking points]
+    F -- passes --> G["human_review<br/>pause for approval"]
+    G --> H["final cover letter / talking points"]
 ```
 
 ---
