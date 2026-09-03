@@ -150,7 +150,7 @@ history; `Obs` (dotted line — logging only, not a request path) is
 ### Agent pipeline (inside the LangGraph node)
 
 ```mermaid
-flowchart LR
+flowchart TB
     A["Job description"] --> B["parse_jd<br/>structured output"]
     B --> C["retrieve_evidence<br/>RAG over resume + 5 projects"]
     C --> D["gap_analysis<br/>matched / partial / missing"]
