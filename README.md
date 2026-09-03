@@ -564,3 +564,36 @@ catch on `cyber-risk-intelligence-lakehouse` for the same idea applied to an ML 
   means every *other* variable in it needs a deliberate, explicit decision about whether CI should
   mirror it — "add the secret" is not the same task as "make CI match local," and this project
   found out the difference the hard way, on the very first real run.
+
+- **Phase 7 — two "fixed" failures came back on `eval-gate`, and this time the fix went one layer
+  deeper.** First `eval-gate` run after pushing the Phase 7 frontend/Docker/Render work failed two
+  golden JDs — and both failures were symptoms this log already claimed were closed. (1)
+  `01_strong_fit_data_analyst.txt`: `gap_analysis` classified a requirement into two buckets, the
+  exact Phase 3 bug `check_no_duplicate_requirements` was built to catch — except this time the
+  retry loop never converged. Attempts 2-4 were byte-identical STUCK repeats (Phase 5's bumped-
+  temperature escalation kicked in as designed), but attempt 5, now genuinely different, just moved
+  the same conflict onto a *different* requirement (`資料倉儲設計經驗`) instead of resolving it. All
+  5 retries spent, still duplicated — Phase 5's fix (break the determinism) worked exactly as
+  intended and it still wasn't enough, because breaking a stuck loop guarantees a *different*
+  answer, not a *correct* one. (2) `03_mixed_fit_ops_automation.txt`: `draft_writer` invented the
+  placeholder chunk_id `"_"` again — the Phase 4b/5 failure that `_format_gap_report` was supposed
+  to have structurally prevented by only ever showing the writer matched/partial items, each with
+  its own real evidence. It still had a hole: nothing actually *required* a matched/partial item to
+  carry real evidence in the first place — `check_matched_and_partial_have_evidence` didn't exist
+  yet, so a `partial` item with an empty `evidence_chunk_ids` list (a valid gap_analysis output the
+  schema never forbade) sailed straight through and handed `draft_writer` exactly the "nothing to
+  cite" situation Phase 4b's fix assumed could no longer happen.
+  Both fixes this time are structural rather than another round of stronger wording or more
+  retries: `gap_analysis.py`'s duplicate-bucket check was rewritten from raise-and-retry into
+  `dedupe_requirements`, which resolves the conflict deterministically (`partial` > `matched` >
+  `missing` — see its docstring for why that order is the honest one) instead of spending more LLM
+  calls hoping one attempt lands cleanly; and the new `check_matched_and_partial_have_evidence`
+  closes the actual hole Phase 4b's fix depended on without enforcing. Also fixed one level further
+  upstream: `parse_jd`'s prompt was silently splitting an "X 或 Y" JD bullet (e.g. "系統測試或自動化
+  測試經驗") into two separate near-duplicate requirements, which is exactly the kind of pair
+  `gap_analysis` tends to get confused between — told it to keep interchangeable alternatives as one
+  requirement instead. General lesson, and maybe the most important one in this whole log: a fix
+  that "confirmed clean on the next live run" was tested against the JD that broke it, not against
+  the space of JDs that could. A golden set that runs on every push is what turned "seems fixed" into
+  "still broken, on a case I hadn't tried" — automatically, unattended, weeks after the original fix
+  — instead of leaving it to be rediscovered by a real user.

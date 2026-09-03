@@ -1,0 +1,34 @@
+# Phase 7d: Render Blueprint. Lets Render create and configure the web service from
+# this one file (New + -> Blueprint on the Render dashboard) instead of clicking
+# through manual setup -- also doubles as a checked-in record of exactly how this
+# project is deployed, which is worth more in a portfolio than a screenshot of a
+# dashboard nobody else can see.
+#
+# `runtime: docker` tells Render to build straight from ./Dockerfile (the same image
+# already verified locally in Phase 7c) rather than trying to guess a buildpack.
+# healthCheckPath matches api/app.py's GET /health, which needs no access code and
+# makes no LLM call -- Render uses it to decide whether a deploy is actually live.
+services:
+  - type: web
+    runtime: docker
+    name: career-copilot-agent
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    envVars:
+      # sync: false -> Render prompts for these in the dashboard instead of storing
+      # the value in this file (which is committed to a PUBLIC repo). Never put a real
+      # key or the access code directly in this file.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ACCESS_CODE
+        sync: false
+      # Not secrets -- fine to commit. Matches the same fallback values already used
+      # in .github/workflows/ci.yml and .env.example, so local dev / CI / production
+      # all agree on the same defaults unless deliberately overridden.
+      - key: OPENAI_CHAT_MODEL
+        value: gpt-4o-mini
+      - key: OPENAI_CRITIC_MODEL
+        value: gpt-4o

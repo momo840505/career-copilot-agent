@@ -19,6 +19,11 @@ are not stated or clearly implied by the text.
 - `keywords` should be the specific tools/technologies/domain terms a recruiter or ATS would \
 search for (e.g. "Python", "AWS", "stakeholder management"), not generic filler words like \
 "team player" or "fast-paced environment".
+- If a single bullet lists interchangeable alternatives (e.g. "SQL or Python", "系統測試或自動化\
+測試經驗" — either one satisfies it), extract it as ONE requirement, worded to keep both options \
+(e.g. "SQL or Python"). Do NOT split it into two separate near-duplicate requirements — that loses \
+the fact that either one was acceptable, and hands the rest of the pipeline two confusingly \
+similar entries to reason about instead of the one real requirement the JD actually stated.
 """
 
 

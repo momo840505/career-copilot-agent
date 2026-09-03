@@ -72,30 +72,88 @@ def check_citations_are_real(report: GapReport, valid_ids: set[str]) -> GapRepor
     return report
 
 
-def check_no_duplicate_requirements(report: GapReport) -> GapReport:
-    """Same principle as check_citations_are_real: a check that needs to see the
-    *whole* report at once (not just one field) has to live outside the schema.
-
-    Nothing stops the model from classifying the same requirement as both "matched"
-    and "missing" — a genuinely observed failure mode, not a hypothetical one — so
-    this catches it and forces a repair rather than silently shipping a
-    self-contradictory report.
+def check_matched_and_partial_have_evidence(report: GapReport) -> GapReport:
+    """The system prompt defines "matched"/"partial" as buckets that exist *because*
+    there's real evidence, and "missing" as the one with none — but nothing in the
+    schema enforced that. A matched/partial item with an empty evidence_chunk_ids list
+    is a "missing" item mis-filed, and left uncaught it becomes draft_writer's problem
+    instead: _format_gap_report shows it as `[evidence: []]`, draft_writer is told to
+    write a claim for it anyway, and — even though its own prompt explicitly forbids
+    ever inventing a chunk_id — under that pressure it has been observed reaching for a
+    placeholder like "_" rather than dropping the claim (see draft_writer.py's module
+    docstring, and the golden-eval failure that motivated this check). Catching the
+    empty-evidence misclassification here, at the source, is more reliable than asking
+    a downstream node to resist writing about something it was handed as if it were
+    legitimate.
     """
-    all_reqs = [item.requirement for item in report.matched + report.partial + report.missing]
-    dupes = {req: count for req, count in Counter(all_reqs).items() if count > 1}
-    if dupes:
+    offenders = [item.requirement for item in report.matched + report.partial if not item.evidence_chunk_ids]
+    if offenders:
         raise ValueError(
-            f"These requirements were classified into more than one bucket "
-            f"(matched/partial/missing): {dupes}. Each requirement must appear in "
-            f"exactly one bucket — pick the single best-fitting one and remove it "
-            f"from the others."
+            f"These requirements are classified as matched/partial but cite no "
+            f"evidence_chunk_ids: {offenders}. A requirement with no real evidence "
+            f"chunk to cite isn't a match at all — reclassify it as 'missing' (with no "
+            f"citations and a note explaining nothing relevant was retrieved), or if "
+            f"there genuinely is supporting evidence, cite the specific chunk_id(s) "
+            f"that show it."
         )
     return report
 
 
+# Preference order used by dedupe_requirements when the SAME bucket-conflict is
+# resolved without going back to the model — see that function's docstring for why
+# this order, specifically, is the honest choice rather than an arbitrary one.
+_BUCKET_KEEP_PRIORITY = ("partial", "matched", "missing")
+
+
+def dedupe_requirements(report: GapReport) -> GapReport:
+    """Nothing stops the model from classifying the same requirement into more than
+    one bucket — a genuinely observed failure mode (see the golden eval set), and one
+    where a plain retry doesn't reliably converge: watched live, the model kept
+    resolving the conflict on one requirement only to introduce a fresh one on a
+    *different* requirement, attempt after attempt, for a JD dense enough to have
+    several near-identical requirements to get confused between. Rather than keep
+    spending retries hoping the model eventually lands on a single self-consistent
+    report, this resolves the conflict deterministically and returns a corrected
+    report — no extra LLM call needed, and the result doesn't depend on which attempt
+    happened to come back cleanest.
+
+    Resolution order, most-preferred bucket first: 'partial' > 'matched' > 'missing'.
+    - A requirement the model couldn't commit to a single bucket for was, by
+      construction, not a case where "matched" was unambiguous — the gap_analysis
+      system prompt's own tie-breaker rule already treats 'partial' as the safe
+      default and reserves 'matched' for the clear-cut case, so when the model itself
+      couldn't decide, 'partial' is the more honest of the two to keep.
+    - 'missing' always loses to either: 'missing' requires zero evidence_chunk_ids
+      (enforced separately, see GapReport's own validator), so a requirement that ALSO
+      appears as matched/partial has real evidence somewhere — "missing" was simply
+      wrong for it, not a competing valid judgment.
+    """
+    buckets = {"matched": list(report.matched), "partial": list(report.partial), "missing": list(report.missing)}
+    counts = Counter(item.requirement for items in buckets.values() for item in items)
+    dupes = {req for req, count in counts.items() if count > 1}
+    if not dupes:
+        return report
+
+    kept_bucket: dict[str, str] = {}
+    for bucket_name in _BUCKET_KEEP_PRIORITY:
+        for item in buckets[bucket_name]:
+            if item.requirement in dupes and item.requirement not in kept_bucket:
+                kept_bucket[item.requirement] = bucket_name
+
+    for bucket_name, items in buckets.items():
+        buckets[bucket_name] = [
+            item for item in items if item.requirement not in dupes or kept_bucket[item.requirement] == bucket_name
+        ]
+
+    return report.model_copy(
+        update={"matched": buckets["matched"], "partial": buckets["partial"], "missing": buckets["missing"]}
+    )
+
+
 def _validate_gap_report(report: GapReport, valid_ids: set[str]) -> GapReport:
     report = check_citations_are_real(report, valid_ids)
-    report = check_no_duplicate_requirements(report)
+    report = check_matched_and_partial_have_evidence(report)
+    report = dedupe_requirements(report)
     return report
 
 
