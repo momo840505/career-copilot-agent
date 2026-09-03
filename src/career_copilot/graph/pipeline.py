@@ -61,9 +61,20 @@ def run_pipeline(
             jd, gap_report, bundles, revision_feedback=feedback_history or None, settings=settings
         )
         verdict = run_critic(draft, gap_report, bundles, settings=settings)
+        # attempt 1 is the initial draft, not a revision -- attempt N (N>1) is
+        # revision (N-1). Set this unconditionally (pass or fail) so it's always
+        # "how many revisions this draft is the result of", not "which attempt
+        # number this is" -- the old `revision_count = attempt` inside the fail
+        # branch below over-counted by exactly 1 whenever the budget was fully
+        # exhausted without ever passing (eval/metrics.py's critic_converged
+        # would report e.g. "3/2 revisions" for a run that only ever spent the
+        # 2 revisions max_revisions actually allows), since that assignment was
+        # never superseded by a later, correct value the way it is in every path
+        # that eventually succeeds. See tests/test_pipeline_revision_count.py for
+        # the concrete before/after numbers across every outcome.
+        revision_count = attempt - 1
         if verdict.passed:
             break
-        revision_count = attempt
         if attempt == max_revisions + 1:
             break
         new_feedback = verdict.issues + [
