@@ -4,8 +4,13 @@ __pycache__/
 *.pyc
 .env
 chroma_db/
+history.db*
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
 evals/results/
 .DS_Store
+
+# Phase 7b: frontend build artifacts / deps -- never commit these
+frontend/node_modules/
+frontend/dist/

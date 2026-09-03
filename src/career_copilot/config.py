@@ -25,6 +25,11 @@ class Settings:
     chroma_dir: Path
     portfolio_dir: Path
     golden_jds_dir: Path
+    # Phase 7: access_code is None (gate off) unless explicitly set — keeps local dev
+    # exactly as before for anyone who hasn't set it, and turns the shared-secret gate
+    # on the moment a real deployment sets ACCESS_CODE. See api/auth.py.
+    access_code: str | None
+    history_db_path: Path
 
 
 def get_settings() -> Settings:
@@ -36,4 +41,6 @@ def get_settings() -> Settings:
         chroma_dir=Path(os.getenv("CHROMA_DB_DIR", "./chroma_db")).resolve(),
         portfolio_dir=_REPO_ROOT / "src" / "career_copilot" / "data" / "portfolio",
         golden_jds_dir=_REPO_ROOT / "src" / "career_copilot" / "data" / "golden_jds",
+        access_code=os.getenv("ACCESS_CODE") or None,
+        history_db_path=Path(os.getenv("HISTORY_DB_PATH", "./history.db")).resolve(),
     )
