@@ -152,13 +152,13 @@ history; `Obs` (dotted line — logging only, not a request path) is
 ```mermaid
 flowchart TB
     A["Job description"] --> B["parse_jd<br/>structured output"]
-    B --> C["retrieve_evidence<br/>RAG over resume + 5 projects"]
+    B --> C["retrieve_evidence<br/>RAG over resume <br/> + 5 projects"]
     C --> D["gap_analysis<br/>matched / partial / missing"]
     D --> E["draft_writer<br/>cites chunk ids"]
     E --> F{"critic<br/>grounded? on-tone?"}
     F -- fails --> E
     F -- passes --> G["human_review<br/>pause for approval"]
-    G --> H["final cover letter / talking points"]
+    G --> H["final cover letter <br/> talking points"]
 ```
 
 ---
