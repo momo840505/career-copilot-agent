@@ -19,7 +19,6 @@ from fastapi.testclient import TestClient
 from career_copilot.api import app as app_module
 from career_copilot.api.db import HistoryRecord
 from career_copilot.config import get_settings as real_get_settings
-from career_copilot.graph.pipeline import PipelineResult
 from career_copilot.graph.retrieve_evidence import EvidenceBundle
 from career_copilot.graph.structured import StructuredOutputError
 from career_copilot.rag.retriever import RetrievedChunk
@@ -78,6 +77,63 @@ def _noop_insert_history(*args, **kwargs):
     """Stand-in for db.insert_history in tests that don't care about persistence --
     avoids ever touching a real SQLite file just because a route succeeded."""
     return None
+
+
+class _FakeInterrupt:
+    """Stands in for langgraph.types.Interrupt: build_graph.py's human_review node
+    calls interrupt(payload), and langgraph surfaces it back to invoke()'s caller as
+    result["__interrupt__"][0].value -- only `.value` is ever read by api/app.py."""
+
+    def __init__(self, value):
+        self.value = value
+
+
+class _FakeStateSnapshot:
+    """Stands in for the object agent_graph.get_state(config) returns -- only
+    `.values` (truthy iff a checkpoint exists for this thread_id) is read."""
+
+    def __init__(self, values):
+        self.values = values
+
+
+def _pending_graph_result(*, critic_passed=True, revision_count=0, jd_text="Data Analyst role..."):
+    """A fake agent_graph.invoke(...) return value shaped like what build_graph.py
+    produces the moment human_review's interrupt() fires -- i.e. what every /draft
+    call and every "revise" decision resumes into."""
+    return {
+        "jd_text": jd_text,
+        "jd": _jd(),
+        "evidence_bundles": [_bundle()],
+        "gap_report": _gap_report(),
+        "draft": _draft(),
+        "critic_verdict": CriticVerdict(passed=critic_passed),
+        "revision_count": revision_count,
+        "__interrupt__": [
+            _FakeInterrupt(
+                {
+                    "draft": _draft().model_dump(),
+                    "critic_passed": critic_passed,
+                    "critic_issues": [] if critic_passed else ["too generic"],
+                    "gap_summary": _gap_report().overall_fit_summary,
+                }
+            )
+        ],
+    }
+
+
+def _approved_graph_result(*, revision_count=0, jd_text="Data Analyst role..."):
+    """A fake agent_graph.invoke(...) return value shaped like what build_graph.py
+    produces once a human approves and the graph reaches END (no interrupt key)."""
+    return {
+        "jd_text": jd_text,
+        "jd": _jd(),
+        "evidence_bundles": [_bundle()],
+        "gap_report": _gap_report(),
+        "draft": _draft(),
+        "critic_verdict": CriticVerdict(passed=True),
+        "revision_count": revision_count,
+        "human_decision": {"action": "approve"},
+    }
 
 
 def test_health_reports_ok_and_key_configured_flag_and_needs_no_client_id():
@@ -180,33 +236,107 @@ def test_gap_analysis_maps_missing_api_key_runtime_error_to_500(monkeypatch):
     assert response.status_code == 500
 
 
-def test_draft_maps_pipeline_result_to_response_fields(monkeypatch):
-    result = PipelineResult(
-        jd=_jd(),
-        evidence_bundles=[_bundle()],
-        gap_report=_gap_report(),
-        draft=_draft(),
-        critic_verdict=CriticVerdict(passed=True),
-        revision_count=0,
+def test_draft_always_pauses_for_review_and_never_persists_history(monkeypatch):
+    monkeypatch.setattr(
+        app_module.agent_graph, "invoke", lambda payload, config: _pending_graph_result()
     )
-    monkeypatch.setattr(app_module, "run_pipeline", lambda jd_text, settings: result)
-    monkeypatch.setattr(app_module, "insert_history", _noop_insert_history)
+    calls = []
+    monkeypatch.setattr(
+        app_module, "insert_history", lambda *a, **k: calls.append((a, k)),
+    )
 
     response = client.post("/draft", json={"jd_text": "Data Analyst role..."}, headers=CLIENT_HEADERS)
     assert response.status_code == 200
     body = response.json()
+    assert body["status"] == "pending_review"
     assert body["job_title"] == "Data Analyst"
     assert body["critic_passed"] is True
     assert body["revision_count"] == 0
     assert body["claims"][0]["evidence_chunk_ids"] == ["skills::chunk0"]
+    assert body["gap_summary"] == "Strong fit on core skills."
+    assert body["thread_id"]  # a real UUID was generated
+    assert calls == []  # a pending draft is not a finished one -- nothing recorded yet
 
 
 def test_draft_maps_structured_output_error_to_502(monkeypatch):
-    def _boom(jd_text, settings):
+    def _boom(payload, config):
         raise StructuredOutputError("gave up after 3 attempts")
 
-    monkeypatch.setattr(app_module, "run_pipeline", _boom)
+    monkeypatch.setattr(app_module.agent_graph, "invoke", _boom)
     response = client.post("/draft", json={"jd_text": "Data Analyst role..."}, headers=CLIENT_HEADERS)
+    assert response.status_code == 502
+
+
+def test_draft_decision_approve_finalizes_and_persists_history(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        app_module.agent_graph, "get_state", lambda config: _FakeStateSnapshot(_pending_graph_result())
+    )
+    monkeypatch.setattr(
+        app_module.agent_graph, "invoke", lambda command, config: _approved_graph_result()
+    )
+    monkeypatch.setattr(
+        app_module, "insert_history",
+        lambda db_path, client_id, kind, job_title, jd_text, result: calls.append(
+            (client_id, kind, job_title, jd_text)
+        ),
+    )
+
+    response = client.post(
+        "/draft/some-thread-id/decision", json={"action": "approve"}, headers=CLIENT_HEADERS,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "approved"
+    assert body["job_title"] == "Data Analyst"
+    assert body["gap_summary"] is None  # only the pending step carries this
+    assert calls == [("test-client", "draft", "Data Analyst", "Data Analyst role...")]
+
+
+def test_draft_decision_revise_stays_pending_and_forwards_feedback(monkeypatch):
+    received_commands = []
+
+    def fake_invoke(command, config):
+        received_commands.append(command)
+        return _pending_graph_result(revision_count=1)
+
+    monkeypatch.setattr(
+        app_module.agent_graph, "get_state", lambda config: _FakeStateSnapshot(_pending_graph_result())
+    )
+    monkeypatch.setattr(app_module.agent_graph, "invoke", fake_invoke)
+    monkeypatch.setattr(app_module, "insert_history", _noop_insert_history)
+
+    response = client.post(
+        "/draft/some-thread-id/decision",
+        json={"action": "revise", "feedback": "Make it shorter."},
+        headers=CLIENT_HEADERS,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "pending_review"
+    assert body["revision_count"] == 1
+    assert received_commands[0].resume == {"action": "revise", "feedback": "Make it shorter."}
+
+
+def test_draft_decision_unknown_thread_returns_404(monkeypatch):
+    monkeypatch.setattr(app_module.agent_graph, "get_state", lambda config: _FakeStateSnapshot({}))
+    response = client.post(
+        "/draft/does-not-exist/decision", json={"action": "approve"}, headers=CLIENT_HEADERS,
+    )
+    assert response.status_code == 404
+
+
+def test_draft_decision_maps_structured_output_error_to_502(monkeypatch):
+    def _boom(command, config):
+        raise StructuredOutputError("gave up after 3 attempts")
+
+    monkeypatch.setattr(
+        app_module.agent_graph, "get_state", lambda config: _FakeStateSnapshot(_pending_graph_result())
+    )
+    monkeypatch.setattr(app_module.agent_graph, "invoke", _boom)
+    response = client.post(
+        "/draft/some-thread-id/decision", json={"action": "approve"}, headers=CLIENT_HEADERS,
+    )
     assert response.status_code == 502
 
 

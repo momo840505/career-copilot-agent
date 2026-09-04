@@ -26,20 +26,23 @@ from __future__ import annotations
 import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from langgraph.types import Command
 from pydantic import BaseModel, Field
 
 from career_copilot.api.auth import get_client_id, require_access_code
 from career_copilot.api.db import get_history, init_db, insert_history, list_history
 from career_copilot.config import get_settings
+from career_copilot.graph.build_graph import build_graph
 from career_copilot.graph.gap_analysis import gap_analysis as run_gap_analysis
 from career_copilot.graph.parse_jd import parse_jd as run_parse_jd
-from career_copilot.graph.pipeline import run_pipeline
 from career_copilot.graph.retrieve_evidence import retrieve_evidence as run_retrieve_evidence
 from career_copilot.graph.structured import StructuredOutputError
 from career_copilot.observability import configure_logging, metrics
@@ -48,6 +51,16 @@ from career_copilot.schemas.gap import GapItem
 
 configure_logging()
 logger = logging.getLogger(__name__)
+
+# Compiled once per process, not once per request -- build_graph()'s own docstring
+# is explicit about this ("call this once per process"). Its checkpointer (an
+# InMemorySaver, see build_graph.py) is what lets POST /draft/{thread_id}/decision
+# find its way back to a specific paused run: the graph module stays the same object
+# across requests, so the checkpoints it wrote during /draft are still there when
+# /draft/{thread_id}/decision resumes them. This also means a paused (pending-review)
+# draft does not survive a process restart/redeploy -- acceptable for a single-
+# instance portfolio demo, not for anything scaled beyond one worker process.
+agent_graph = build_graph()
 
 
 @asynccontextmanager
@@ -136,7 +149,26 @@ class GapAnalysisResponse(BaseModel):
     overall_fit_summary: str
 
 
-class DraftResponse(BaseModel):
+class DraftDecisionRequest(BaseModel):
+    action: Literal["approve", "revise"]
+    feedback: str | None = Field(
+        default=None,
+        description='Required in spirit (not enforced) for action="revise" -- see '
+        "_node_human_review's fallback text if omitted.",
+    )
+
+
+class DraftStepResponse(BaseModel):
+    """What both POST /draft and POST /draft/{thread_id}/decision return. The graph's
+    human_review node (build_graph.py) always pauses after the draft/critic loop ends
+    -- whether the critic passed or the revision budget ran out -- so a fresh POST
+    /draft never finishes a letter by itself; status is always "pending_review" there.
+    It only becomes "approved" from the decision route, once a human sends
+    {"action": "approve"} and the graph reaches END with no further interrupt.
+    """
+
+    thread_id: str
+    status: Literal["pending_review", "approved"]
     job_title: str
     greeting: str
     body: str
@@ -144,6 +176,7 @@ class DraftResponse(BaseModel):
     claims: list[Claim]
     critic_passed: bool
     critic_issues: list[str]
+    gap_summary: str | None = None
     revision_count: int
 
 
@@ -222,37 +255,124 @@ def gap_analysis(
     return response
 
 
-@app.post("/draft", response_model=DraftResponse)
+def _pending_review_response(thread_id: str, result: dict) -> DraftStepResponse:
+    """Build a DraftStepResponse from a graph result that just hit human_review's
+    interrupt() -- `result["__interrupt__"][0].value` is exactly the `payload` dict
+    _node_human_review (build_graph.py) passed to interrupt()."""
+    interrupt_payload = result["__interrupt__"][0].value
+    draft = interrupt_payload["draft"]  # already a plain dict (draft.model_dump())
+    return DraftStepResponse(
+        thread_id=thread_id,
+        status="pending_review",
+        job_title=result["jd"].job_title,
+        greeting=draft["greeting"],
+        body=draft["body"],
+        closing=draft["closing"],
+        claims=draft["claims"],
+        critic_passed=interrupt_payload["critic_passed"],
+        critic_issues=interrupt_payload["critic_issues"],
+        gap_summary=interrupt_payload["gap_summary"],
+        revision_count=result.get("revision_count", 0),
+    )
+
+
+def _approved_response(thread_id: str, result: dict) -> DraftStepResponse:
+    """Build a DraftStepResponse from a graph result that reached END (the human
+    approved and no interrupt is pending)."""
+    return DraftStepResponse(
+        thread_id=thread_id,
+        status="approved",
+        job_title=result["jd"].job_title,
+        greeting=result["draft"].greeting,
+        body=result["draft"].body,
+        closing=result["draft"].closing,
+        claims=result["draft"].claims,
+        critic_passed=result["critic_verdict"].passed,
+        critic_issues=result["critic_verdict"].issues,
+        gap_summary=None,
+        revision_count=result.get("revision_count", 0),
+    )
+
+
+@app.post("/draft", response_model=DraftStepResponse)
 def draft(
     request: JDTextRequest,
     _: None = Depends(require_access_code),
     client_id: str = Depends(get_client_id),
-) -> DraftResponse:
-    """Runs the full pipeline (parse -> retrieve -> gap analysis -> draft/critic loop),
-    same as scripts/run_evals.py — no human-in-the-loop approval here. The client is
-    expected to review `critic_passed` / `critic_issues` itself before using the draft
-    for anything, exactly as the README's "Known limitations" section describes.
+) -> DraftStepResponse:
+    """Starts the full pipeline (parse -> retrieve -> gap analysis -> draft/critic
+    loop) on the compiled LangGraph StateGraph (build_graph.py). The graph's
+    human_review node always pauses here via interrupt() -- this call never returns
+    a finished letter by itself. The response's `thread_id` is what the client sends
+    back to POST /draft/{thread_id}/decision to approve or request a revision.
     """
-    settings = get_settings()
+    thread_id = str(uuid.uuid4())
+    config = {"configurable": {"thread_id": thread_id}}
     try:
-        result = run_pipeline(request.jd_text, settings=settings)
+        result = agent_graph.invoke({"jd_text": request.jd_text}, config=config)
     except StructuredOutputError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
-    response = DraftResponse(
-        job_title=result.jd.job_title,
-        greeting=result.draft.greeting,
-        body=result.draft.body,
-        closing=result.draft.closing,
-        claims=result.draft.claims,
-        critic_passed=result.critic_verdict.passed,
-        critic_issues=result.critic_verdict.issues,
-        revision_count=result.revision_count,
-    )
+
+    # route_after_critic always sends the graph to human_review (pass or exhausted
+    # revision budget), so this should always be true -- but if a future change to
+    # the graph ever let it reach END on the very first call, degrade gracefully to
+    # an "approved" response (and record history) rather than crashing on a KeyError.
+    if "__interrupt__" not in result:
+        response = _approved_response(thread_id, result)
+        insert_history(
+            get_settings().history_db_path, client_id, "draft", response.job_title,
+            request.jd_text, response.model_dump(),
+        )
+        return response
+
+    return _pending_review_response(thread_id, result)
+
+
+@app.post("/draft/{thread_id}/decision", response_model=DraftStepResponse)
+def draft_decision(
+    thread_id: str,
+    request: DraftDecisionRequest,
+    _: None = Depends(require_access_code),
+    client_id: str = Depends(get_client_id),
+) -> DraftStepResponse:
+    """Resumes a paused draft (see POST /draft) with the human's decision.
+
+    action="approve" ends the graph at END and returns the final letter -- that's
+    the only path that persists a history record, mirroring the old (pre-review)
+    /draft behavior of only ever recording a *finished* draft.
+
+    action="revise" sends the graph back to draft_writer with the given feedback
+    folded into feedback_history, and the response pauses at human_review again
+    (another "pending_review"), same as the CLI's scripts/graph_demo.py.
+    """
+    config = {"configurable": {"thread_id": thread_id}}
+
+    if not agent_graph.get_state(config).values:
+        raise HTTPException(
+            status_code=404,
+            detail="Review session not found or has expired. Please start a new draft.",
+        )
+
+    decision: dict = {"action": request.action}
+    if request.action == "revise":
+        decision["feedback"] = request.feedback or "Please revise and try again."
+
+    try:
+        result = agent_graph.invoke(Command(resume=decision), config=config)
+    except StructuredOutputError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    if "__interrupt__" in result:
+        return _pending_review_response(thread_id, result)
+
+    response = _approved_response(thread_id, result)
     insert_history(
-        settings.history_db_path, client_id, "draft", result.jd.job_title, request.jd_text,
-        response.model_dump(),
+        get_settings().history_db_path, client_id, "draft", response.job_title,
+        result.get("jd_text", ""), response.model_dump(),
     )
     return response
 

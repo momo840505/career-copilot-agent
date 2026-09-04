@@ -326,14 +326,21 @@ neither duplicates any pipeline logic, they just expose it differently.
 **FastAPI service** (`src/career_copilot/api/app.py`, launched via
 `python scripts/run_api.py`): `GET /health` (no LLM call — confirms the service is up
 and an API key is configured), `GET /metrics` (see [Observability](#-observability)),
-`POST /gap-analysis` (parse -> retrieve -> gap analysis), and `POST /draft` (the full
-pipeline, draft/critic loop included — no human-in-the-loop approval over HTTP, unlike
-`graph_demo.py`'s interactive run; the caller is expected to check `critic_passed` /
-`critic_issues` before using the draft for anything, per the "Known Limitations" section
-above). A `StructuredOutputError` — every repair attempt in `invoke_structured`'s retry
-loop exhausted — is mapped to `502 Bad Gateway`, not `400/422`: the request itself was
-fine, an upstream dependency (the LLM) is what failed to deliver. Interactive docs at
-`/docs` once it's running.
+`POST /gap-analysis` (parse -> retrieve -> gap analysis), and `POST /draft` /
+`POST /draft/{thread_id}/decision` (the full pipeline, draft/critic loop included, over
+the same compiled `build_graph.py` StateGraph `graph_demo.py` drives interactively — so
+the API now has the same human-in-the-loop pause: `POST /draft` always comes back with
+`status: "pending_review"` plus a `thread_id`, never a finished letter by itself; the
+caller reviews `critic_passed` / `critic_issues` and sends
+`POST /draft/{thread_id}/decision` with `{"action": "approve"}` to finalize — the only
+path that persists a history record — or `{"action": "revise", "feedback": "..."}` to
+send it back through `draft_writer` for another attempt, which pauses at
+`pending_review` again). The checkpointer behind this is in-memory per process, so a
+paused draft doesn't survive a redeploy — fine for a single-instance demo. A
+`StructuredOutputError` — every repair attempt in `invoke_structured`'s retry loop
+exhausted — is mapped to `502 Bad Gateway`, not `400/422`: the request itself was fine,
+an upstream dependency (the LLM) is what failed to deliver. Interactive docs at `/docs`
+once it's running.
 
 **MCP server** (`src/career_copilot/mcp_server.py`): exposes `search_evidence`,
 `analyze_job_description`, and `draft_cover_letter` as MCP tools, so any MCP-aware

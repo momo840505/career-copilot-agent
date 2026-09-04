@@ -42,7 +42,11 @@ export default function JDForm({ onResult, notify }) {
       } else {
         const data = await runDraft(jdText);
         onResult({ kind: "draft", data });
-        notify?.(data.critic_passed ? "Cover letter drafted! ✨" : "Draft ready -- the critic flagged a few things.");
+        notify?.(
+          data.critic_passed
+            ? "Draft ready for your review! ✨"
+            : "Draft ready for your review -- the critic flagged a few things."
+        );
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 502) {

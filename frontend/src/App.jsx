@@ -105,7 +105,13 @@ export default function App() {
               <>
                 <JDForm onResult={setResult} notify={notify} />
                 {result && result.kind === "gap_analysis" && <GapAnalysisResult result={result.data} />}
-                {result && result.kind === "draft" && <DraftResult result={result.data} celebrate />}
+                {result && result.kind === "draft" && (
+                  <DraftResult
+                    result={result.data}
+                    celebrate
+                    onUpdate={(data) => setResult({ kind: "draft", data })}
+                  />
+                )}
               </>
             )}
             {tab === "history" && <HistoryList />}

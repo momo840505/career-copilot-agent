@@ -947,6 +947,84 @@ kbd {
   border: 1px solid var(--partial-border);
 }
 
+.critic-badge.pending {
+  background: var(--partial-bg);
+  color: var(--partial);
+  border: 1px solid var(--partial-border);
+  margin: 0;
+}
+
+.pending-review-card .draft-header {
+  align-items: center;
+}
+
+.gap-summary-note {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  background: var(--card-bg-solid);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.revision-feedback {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+  line-height: 1.5;
+  font: inherit;
+  margin: 0.25rem 0 1rem;
+}
+
+.draft-review-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.draft-review-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.65rem 1.1rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg-solid);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.draft-review-actions button:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.draft-review-actions button.primary {
+  background: linear-gradient(135deg, var(--primary), var(--accent2) 50%, var(--accent3));
+  background-size: 200% auto;
+  border-color: transparent;
+  color: white;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.35);
+}
+
+.draft-review-actions button.primary:hover:not(:disabled) {
+  background-position: right center;
+  color: white;
+  box-shadow: 0 8px 22px rgba(236, 72, 153, 0.4);
+}
+
+.draft-review-actions button:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
 .critic-issues {
   color: var(--danger);
   font-size: 0.88rem;

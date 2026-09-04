@@ -105,6 +105,17 @@ export function runDraft(jdText) {
   });
 }
 
+// Resumes a paused draft (see api/app.py's /draft/{thread_id}/decision): action is
+// "approve" (finalizes the letter -- this is the only path that shows up in History)
+// or "revise" (sends it back through draft_writer with `feedback`, and comes back
+// with another pending_review to approve/revise again).
+export function submitDraftDecision(threadId, action, feedback) {
+  return apiFetch(`/draft/${encodeURIComponent(threadId)}/decision`, {
+    method: "POST",
+    body: JSON.stringify(feedback ? { action, feedback } : { action }),
+  });
+}
+
 export function fetchHistoryList() {
   return apiFetch("/history", { method: "GET" });
 }
