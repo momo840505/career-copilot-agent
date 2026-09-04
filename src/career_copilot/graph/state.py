@@ -31,4 +31,5 @@ class AgentState(TypedDict, total=False):
     critic_verdict: CriticVerdict
     feedback_history: list[str]
     revision_count: int
+    attempt_count: int
     human_decision: dict

@@ -140,12 +140,15 @@ flowchart TB
     API -.-> Obs
 ```
 
-`Auth` checks `X-Access-Code` / `X-Client-Id` on every route but `/health` and
-`/metrics`. `API` is FastAPI serving both the built React frontend and the JSON
-routes from the same origin. `Graph` is the LangGraph pipeline below, which calls
-`Chroma` for retrieval and `OpenAI` for every LLM step. `SQLite` holds per-client
-history; `Obs` (dotted line — logging only, not a request path) is
-`observability.py`'s structured logs + `/metrics`.
+`Auth` checks `X-Access-Code` on every route but `/health` and `/metrics`;
+`X-Client-Id` is additionally required on every route except those two AND
+`/auth/verify`, which only needs a valid access code to answer (there's no
+per-client history to scope at that point). `API` is FastAPI serving both the
+built React frontend and the JSON routes from the same origin. `Graph` is the
+LangGraph pipeline below, which calls `Chroma` for retrieval and `OpenAI` for
+every LLM step. `SQLite` holds per-client history; `Obs` (dotted line —
+logging only, not a request path) is `observability.py`'s structured logs +
+`/metrics`.
 
 ### Agent pipeline (inside the LangGraph node)
 

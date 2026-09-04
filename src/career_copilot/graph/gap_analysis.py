@@ -140,10 +140,29 @@ def dedupe_requirements(report: GapReport) -> GapReport:
             if item.requirement in dupes and item.requirement not in kept_bucket:
                 kept_bucket[item.requirement] = bucket_name
 
+    # `kept_bucket` only decides which *bucket* wins a cross-bucket conflict -- it
+    # says nothing about a requirement the model duplicated *within* a single bucket
+    # (e.g. two separate GapItems both named "SQL" inside `matched`, with no
+    # cross-bucket conflict at all). The old filter below kept every item whose
+    # bucket matched `kept_bucket[requirement]`, so same-bucket duplicates both
+    # passed straight through -- contradicting this function's own "each
+    # requirement classified exactly once" invariant. Tracking which requirements
+    # have already been kept (per bucket) catches that case too, not just the
+    # cross-bucket one.
+    seen_in_kept_bucket: set[str] = set()
     for bucket_name, items in buckets.items():
-        buckets[bucket_name] = [
-            item for item in items if item.requirement not in dupes or kept_bucket[item.requirement] == bucket_name
-        ]
+        filtered = []
+        for item in items:
+            if item.requirement not in dupes:
+                filtered.append(item)
+                continue
+            if kept_bucket[item.requirement] != bucket_name:
+                continue
+            if item.requirement in seen_in_kept_bucket:
+                continue
+            seen_in_kept_bucket.add(item.requirement)
+            filtered.append(item)
+        buckets[bucket_name] = filtered
 
     return report.model_copy(
         update={"matched": buckets["matched"], "partial": buckets["partial"], "missing": buckets["missing"]}

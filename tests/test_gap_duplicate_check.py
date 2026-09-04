@@ -69,6 +69,25 @@ def test_three_way_conflict_keeps_partial():
     assert [item.requirement for item in result.partial] == ["AI工具應用"]
 
 
+def test_same_bucket_duplicate_is_collapsed_to_one_entry():
+    # Regression: the model can also list the same requirement TWICE inside the SAME
+    # bucket (no cross-bucket conflict at all -- both copies are "matched"). The old
+    # filter only decided which *bucket* wins a cross-bucket conflict, then kept every
+    # item whose bucket matched that winner -- so two same-bucket copies both matched
+    # that check and both survived, contradicting "each requirement classified exactly
+    # once". Only the first copy should remain.
+    report = GapReport(
+        matched=[
+            GapItem(requirement="SQL", evidence_chunk_ids=["skills::chunk0"], note="first"),
+            GapItem(requirement="SQL", evidence_chunk_ids=["skills::chunk1"], note="second"),
+        ],
+        overall_fit_summary="fine",
+    )
+    result = dedupe_requirements(report)
+    assert len(result.matched) == 1
+    assert result.matched[0].note == "first"
+
+
 def test_only_the_duplicated_requirement_is_touched():
     # A conflict on one requirement must not disturb an unrelated, correctly-classified
     # one sitting in the same buckets.

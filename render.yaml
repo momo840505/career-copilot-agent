@@ -25,10 +25,17 @@ services:
         sync: false
       - key: ACCESS_CODE
         sync: false
-      # Not secrets -- fine to commit. Matches the same fallback values already used
-      # in .github/workflows/ci.yml and .env.example, so local dev / CI / production
-      # all agree on the same defaults unless deliberately overridden.
+      # Not secrets -- fine to commit.
+      # OPENAI_CHAT_MODEL matches the fallback already used in .env.example and
+      # .github/workflows/ci.yml exactly, so local dev / CI / production agree on
+      # the same chat-model default unless deliberately overridden.
       - key: OPENAI_CHAT_MODEL
         value: gpt-4o-mini
+      # OPENAI_CRITIC_MODEL is a deliberate exception, NOT a value that "matches"
+      # .env.example -- .env.example (and config.py's own fallback) ship gpt-4o-mini
+      # as the default here, with a comment noting gpt-4o is worth trying if the
+      # critic is over-strict. Production uses that stronger gpt-4o critic on
+      # purpose, matching ci.yml's fallback (see its comment for why: gpt-4o-mini's
+      # critic once silently passed golden JDs that should have failed).
       - key: OPENAI_CRITIC_MODEL
         value: gpt-4o

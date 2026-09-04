@@ -79,7 +79,11 @@ def _node_draft_writer(state: AgentState) -> dict:
         state["evidence_bundles"],
         revision_feedback=state.get("feedback_history") or None,
     )
-    return {"draft": draft}
+    # attempt_count tracks how many times this node has produced a draft: 1 for the
+    # initial (non-revision) draft, 2 for the first revision, etc. _node_critic turns
+    # this into `revision_count = attempt_count - 1` -- see its comment for why.
+    attempt_count = state.get("attempt_count", 0) + 1
+    return {"draft": draft, "attempt_count": attempt_count}
 
 
 def _accumulate_feedback(history: list[str] | None, new_items: list[str]) -> list[str]:
@@ -95,13 +99,23 @@ def _accumulate_feedback(history: list[str] | None, new_items: list[str]) -> lis
 
 def _node_critic(state: AgentState) -> dict:
     verdict = run_critic(state["draft"], state["gap_report"], state["evidence_bundles"])
-    updates: dict = {"critic_verdict": verdict}
+    # revision_count = attempt_count - 1 (attempt 1 is the initial draft, not a
+    # revision), set unconditionally (pass or fail) -- the exact same fix, for the
+    # exact same reason, as graph/pipeline.py's run_pipeline(). The old version only
+    # set revision_count on failure, incrementing it there instead of deriving it
+    # from attempt_count; that made route_after_critic stop the loop after only 1
+    # real revision instead of the MAX_REVISIONS it was supposed to allow (verified
+    # against pipeline.py's already-fixed, already-tested loop bound; see
+    # tests/test_graph_routing.py for this file's regression coverage).
+    updates: dict = {
+        "critic_verdict": verdict,
+        "revision_count": state.get("attempt_count", 1) - 1,
+    }
     if not verdict.passed:
         new_feedback = verdict.issues + [
             f'Claim "{c.claim_text}" is not well-grounded: {c.reason}' for c in verdict.ungrounded_claims
         ]
         updates["feedback_history"] = _accumulate_feedback(state.get("feedback_history"), new_feedback)
-        updates["revision_count"] = state.get("revision_count", 0) + 1
     return updates
 
 

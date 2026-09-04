@@ -50,9 +50,21 @@ async function apiFetch(path, options = {}) {
     "X-Client-Id": getClientId(),
     ...options.headers,
   };
-  const accessCode = getStoredAccessCode();
-  if (accessCode) {
-    headers["X-Access-Code"] = accessCode;
+  // Only fall back to the stored code if the caller didn't already put one in
+  // options.headers. verifyAccessCode(code) explicitly sets X-Access-Code to the
+  // code the user just typed on the login screen -- unconditionally overwriting it
+  // here with whatever's in localStorage (the old behavior) meant a freshly typed
+  // *correct* code got silently replaced by a stale *stored* one (or vice versa:
+  // typing a wrong code while a correct one was stored would validate against the
+  // stored code, then overwrite it with the wrong one just typed), so the login
+  // screen could reject a correct code, or accept a wrong one and then break every
+  // later request. Every other caller here never sets X-Access-Code explicitly, so
+  // this fallback still applies to them exactly as before.
+  if (!("X-Access-Code" in headers)) {
+    const accessCode = getStoredAccessCode();
+    if (accessCode) {
+      headers["X-Access-Code"] = accessCode;
+    }
   }
 
   const response = await fetch(path, { ...options, headers });
