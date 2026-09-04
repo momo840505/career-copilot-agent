@@ -879,6 +879,26 @@ catch on `cyber-risk-intelligence-lakehouse` for the same idea applied to an ML 
   with a concrete plan for what *will* verify it, and that plan gets followed through rather than
   left as a promise.
 
+- **Phase 8 — `check_matched_and_partial_have_evidence` itself turned out to have the same flaw
+  it was built to fix in others: raise-and-retry that never converges.** Live `eval-gate` failed
+  `03_mixed_fit_ops_automation.txt` again, but differently this time — not `draft_writer` inventing
+  a placeholder chunk_id, but `gap_analysis` itself exhausting all 5 `invoke_structured` attempts,
+  every single one rejected by this exact check for the exact same three uncited requirements
+  (`RPA`, `企業流程自動化`, `AI工具應用` — buzzwords with real semantic pull but nothing retrieved to
+  back them). The STUCK-retry escalation (bumped temperature, explicit "make a different decision"
+  note) fired as designed and still didn't help: the model kept re-asserting "partial"/"matched"
+  with an empty `evidence_chunk_ids` list rather than either of the two fixes the error message
+  spelled out. This is the identical shape of the Phase 7 duplicate-bucket failure that motivated
+  `dedupe_requirements` in the first place — a model repeating the same classification decision
+  isn't a case that needs a clearer prompt or another retry, it needs the retry loop taken out of
+  the loop entirely. So `check_matched_and_partial_have_evidence` was rewritten the same way:
+  `reclassify_uncited_as_missing` now moves an uncited matched/partial item straight into `missing`
+  deterministically, no LLM call and no invented citation, exactly mirroring the reasoning already
+  proven out by `dedupe_requirements`. General lesson: a validator that only ever raises is really
+  betting the model can fix what it just got wrong, on demand, forever — that bet doesn't always
+  pay off, and the fallback the error message already recommends is often safe to just apply
+  directly instead of asking for it.
+
 ---
 
 # 🎯 Skills Demonstrated

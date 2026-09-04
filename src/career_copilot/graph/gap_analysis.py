@@ -72,7 +72,7 @@ def check_citations_are_real(report: GapReport, valid_ids: set[str]) -> GapRepor
     return report
 
 
-def check_matched_and_partial_have_evidence(report: GapReport) -> GapReport:
+def reclassify_uncited_as_missing(report: GapReport) -> GapReport:
     """The system prompt defines "matched"/"partial" as buckets that exist *because*
     there's real evidence, and "missing" as the one with none — but nothing in the
     schema enforced that. A matched/partial item with an empty evidence_chunk_ids list
@@ -81,22 +81,34 @@ def check_matched_and_partial_have_evidence(report: GapReport) -> GapReport:
     write a claim for it anyway, and — even though its own prompt explicitly forbids
     ever inventing a chunk_id — under that pressure it has been observed reaching for a
     placeholder like "_" rather than dropping the claim (see draft_writer.py's module
-    docstring, and the golden-eval failure that motivated this check). Catching the
-    empty-evidence misclassification here, at the source, is more reliable than asking
-    a downstream node to resist writing about something it was handed as if it were
-    legitimate.
+    docstring, and the golden-eval failure that motivated this check).
+
+    This used to raise ValueError and spend a retry asking the model to pick one of the
+    two honest fixes itself (reclassify as "missing", or cite a real chunk_id). That
+    doesn't reliably converge: observed live on the golden eval set, for JDs whose only
+    signal is an adjacent/aspirational skill (e.g. "RPA", "企業流程自動化" — buzzwords the
+    model clearly wants to give some credit for but has no retrieved evidence to back),
+    the model kept re-asserting the exact same matched/partial classification with no
+    citation across every attempt — including after the STUCK note and a bumped
+    temperature (see structured.py) — burning the whole retry budget for a decision it
+    was never going to reverse on its own.
+
+    So resolve it the same way dedupe_requirements resolves its own bucket conflict:
+    deterministically, without spending another LLM call. Moving an uncited item to
+    'missing' is always the honest fallback — it never invents a citation, it just
+    accepts what the item's own empty evidence_chunk_ids already says. A requirement
+    that has real evidence elsewhere isn't affected: dedupe_requirements (which must
+    run after this) prefers 'partial'/'matched' over 'missing' for any requirement that
+    ends up duplicated across buckets as a result.
     """
-    offenders = [item.requirement for item in report.matched + report.partial if not item.evidence_chunk_ids]
-    if offenders:
-        raise ValueError(
-            f"These requirements are classified as matched/partial but cite no "
-            f"evidence_chunk_ids: {offenders}. A requirement with no real evidence "
-            f"chunk to cite isn't a match at all — reclassify it as 'missing' (with no "
-            f"citations and a note explaining nothing relevant was retrieved), or if "
-            f"there genuinely is supporting evidence, cite the specific chunk_id(s) "
-            f"that show it."
-        )
-    return report
+    offenders = [item for item in report.matched + report.partial if not item.evidence_chunk_ids]
+    if not offenders:
+        return report
+    offending_reqs = {item.requirement for item in offenders}
+    matched = [item for item in report.matched if item.requirement not in offending_reqs]
+    partial = [item for item in report.partial if item.requirement not in offending_reqs]
+    missing = list(report.missing) + offenders
+    return report.model_copy(update={"matched": matched, "partial": partial, "missing": missing})
 
 
 # Preference order used by dedupe_requirements when the SAME bucket-conflict is
@@ -171,7 +183,7 @@ def dedupe_requirements(report: GapReport) -> GapReport:
 
 def _validate_gap_report(report: GapReport, valid_ids: set[str]) -> GapReport:
     report = check_citations_are_real(report, valid_ids)
-    report = check_matched_and_partial_have_evidence(report)
+    report = reclassify_uncited_as_missing(report)
     report = dedupe_requirements(report)
     return report
 
