@@ -1,4 +1,4 @@
-"""Structured output schema for the gap_analysis node (Phase 3)."""
+"""Structured output schema for the gap_analysis node."""
 from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator

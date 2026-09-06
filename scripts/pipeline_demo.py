@@ -1,8 +1,8 @@
 """CLI: run the full parse_jd -> retrieve_evidence -> gap_analysis chain by hand.
 
 This wires the three nodes together manually (plain function calls) so it's obvious
-what each one does before Phase 4 turns this into an actual LangGraph state machine
-with a self-correction loop and a human-approval checkpoint.
+what each one does before build_graph.py turns this into an actual LangGraph state
+machine with a self-correction loop and a human-approval checkpoint.
 
     python scripts/pipeline_demo.py path/to/jd.txt
 """

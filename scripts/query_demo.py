@@ -2,7 +2,7 @@
 
     python scripts/query_demo.py "does she have SQL experience?"
 
-If this prints back relevant, correctly-attributed chunks, Phase 1 is working end to end.
+If this prints back relevant, correctly-attributed chunks, retrieval is working end to end.
 """
 import sys
 from pathlib import Path

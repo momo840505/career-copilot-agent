@@ -1,11 +1,11 @@
-# Phase 7d: Render Blueprint. Lets Render create and configure the web service from
-# this one file (New + -> Blueprint on the Render dashboard) instead of clicking
-# through manual setup -- also doubles as a checked-in record of exactly how this
-# project is deployed, which is worth more in a portfolio than a screenshot of a
-# dashboard nobody else can see.
+# Render Blueprint. Lets Render create and configure the web service from this one
+# file (New + -> Blueprint on the Render dashboard) instead of clicking through manual
+# setup -- also doubles as a checked-in record of exactly how this project is
+# deployed, which is worth more in a portfolio than a screenshot of a dashboard nobody
+# else can see.
 #
 # `runtime: docker` tells Render to build straight from ./Dockerfile (the same image
-# already verified locally in Phase 7c) rather than trying to guess a buildpack.
+# already verified locally) rather than trying to guess a buildpack.
 # healthCheckPath matches api/app.py's GET /health, which needs no access code and
 # makes no LLM call -- Render uses it to decide whether a deploy is actually live.
 services:

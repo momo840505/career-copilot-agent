@@ -1,4 +1,4 @@
-"""Pure-logic tests for the MCP server's tool functions (Phase 6) — no API key needed.
+"""Pure-logic tests for the MCP server's tool functions -- no API key needed.
 
 Each @mcp.tool()-decorated function in career_copilot.mcp_server is a thin wrapper over
 a pipeline function imported by name into that module (run_search, run_parse_jd,

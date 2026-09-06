@@ -1,6 +1,6 @@
-"""Phase 5: objective, code-based metrics for a completed pipeline run.
+"""Objective, code-based metrics for a completed pipeline run.
 
-Deliberately NOT LLM-as-judge — these are things a set-membership check or a string
+Deliberately NOT LLM-as-judge -- these are things a set-membership check or a string
 search can verify exactly, so they're deterministic, free, and reproducible, unlike
 the groundedness judge in groundedness_judge.py. That's also why these are the metrics
 treated as hard CI gates (a failing run fails the build) while groundedness is treated
@@ -60,9 +60,9 @@ def no_missing_skill_leak(draft: CoverLetterDraft, gap_report: GapReport) -> Met
     obvious disclaimer nearby? Intentionally a blunt substring check, not an LLM judge:
     it can't catch a paraphrased overclaim, but what it DOES catch, it catches with
     zero false positives on an honest draft and zero API cost — which is what makes it
-    safe to use as a hard gate rather than an advisory score. (As of Phase 4b,
-    draft_writer is no longer even shown the missing list, so this should always pass —
-    this metric exists to catch a regression if that ever changes.)"""
+    safe to use as a hard gate rather than an advisory score. (draft_writer is no
+    longer even shown the missing list, so this should always pass -- this metric
+    exists to catch a regression if that ever changes.)"""
     body_lower = draft.body.lower()
     leaks = []
     for item in gap_report.missing:

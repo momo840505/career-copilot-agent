@@ -1,4 +1,4 @@
-"""CLI: launch the FastAPI service (Phase 6).
+"""CLI: launch the FastAPI service.
 
     python scripts/run_api.py
 

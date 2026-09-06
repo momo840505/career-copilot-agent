@@ -1,4 +1,4 @@
-"""Structured output schema for the critic node (Phase 4)."""
+"""Structured output schema for the critic node."""
 from __future__ import annotations
 
 from pydantic import BaseModel, Field, model_validator
@@ -7,10 +7,10 @@ from pydantic import BaseModel, Field, model_validator
 class UngroundedClaim(BaseModel):
     """A single flagged claim, paired with WHY it's flagged. A bare list of claim
     strings (the original shape) told draft_writer *that* something was wrong but not
-    *what* to fix — observed live: without a reason, the writer could only reword the
-    same sentence superficially and the same overclaim resurfaced attempt after attempt.
-    This mirrors GapItem's (requirement, note) shape in schemas/gap.py for the same
-    reason: a flag with no explanation isn't actionable feedback."""
+    *what* to fix -- without a reason, the writer could only reword the same sentence
+    superficially and the same overclaim resurfaced attempt after attempt. This
+    mirrors GapItem's (requirement, note) shape in schemas/gap.py for the same reason:
+    a flag with no explanation isn't actionable feedback."""
 
     claim_text: str = Field(description="Exact text of the claim that isn't supported by its cited evidence.")
     reason: str = Field(

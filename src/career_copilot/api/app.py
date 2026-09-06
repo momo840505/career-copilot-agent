@@ -1,25 +1,23 @@
-"""Phase 6/7: FastAPI service. Same pipeline the CLI demos, MCP server, and eval
-harness all call — this is just another entry point over it, not a separate
-implementation.
+"""FastAPI service. Same pipeline the CLI demos, MCP server, and eval harness all
+call -- this is just another entry point over it, not a separate implementation.
 
 Run with: python scripts/run_api.py   (docs at http://127.0.0.1:8000/docs)
 
 Error mapping: StructuredOutputError means the LLM never produced valid, rule-passing
-output after every repair attempt in invoke_structured's bounded retry loop was
-exhausted (see graph/structured.py). That's not a bad request from the client — the
-request was fine, an *upstream dependency* (the LLM) failed to deliver — so it's mapped
-to 502 Bad Gateway, not 400/422. A missing/invalid OPENAI_API_KEY is a server
-misconfiguration, mapped to 500.
+output after every repair attempt in invoke_structured's retry loop was used up (see
+graph/structured.py). That's not a bad request from the client -- the request was
+fine, an upstream dependency (the LLM) failed to deliver -- so it maps to 502 Bad
+Gateway, not 400/422. A missing/invalid OPENAI_API_KEY is a server misconfiguration,
+mapped to 500.
 
-Phase 7 additions: every route except /health and /auth/verify requires the shared
-access code (api/auth.py) once ACCESS_CODE is set, and /gap-analysis + /draft now
-persist a record of each successful call to SQLite (api/db.py) for the frontend's
-history view.
+Every route except /health and /auth/verify requires the shared access code
+(api/auth.py) once ACCESS_CODE is set, and /gap-analysis + /draft persist a record of
+each successful call to SQLite (api/db.py) for the frontend's history view.
 
-Phase 7e addition: structured logging (career_copilot/observability.py) is configured
-at import time, below -- before `app = FastAPI(...)` runs, so even startup-time log
-lines (e.g. from init_db in lifespan) go through it. A request-logging middleware and
-GET /metrics expose the same module's in-process counters.
+Structured logging (career_copilot/observability.py) is configured at import time,
+below, before `app = FastAPI(...)` runs, so even startup-time log lines (e.g. from
+init_db in lifespan) go through it. A request-logging middleware and GET /metrics
+expose the same module's in-process counters.
 """
 from __future__ import annotations
 
@@ -54,13 +52,13 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 # Compiled once per process, not once per request -- build_graph()'s own docstring
-# is explicit about this ("call this once per process"). Its checkpointer (an
-# InMemorySaver, see build_graph.py) is what lets POST /draft/{thread_id}/decision
-# find its way back to a specific paused run: the graph module stays the same object
-# across requests, so the checkpoints it wrote during /draft are still there when
-# /draft/{thread_id}/decision resumes them. This also means a paused (pending-review)
-# draft does not survive a process restart/redeploy -- acceptable for a single-
-# instance portfolio demo, not for anything scaled beyond one worker process.
+# says to call it once per process. Its checkpointer (an InMemorySaver, see
+# build_graph.py) is what lets POST /draft/{thread_id}/decision find its way back to
+# a specific paused run: this module-level graph object stays the same across
+# requests, so the checkpoints written during /draft are still there when
+# /draft/{thread_id}/decision resumes them. Also means a paused (pending-review)
+# draft doesn't survive a process restart/redeploy -- fine for a single-instance
+# portfolio demo, not for anything scaled beyond one worker process.
 agent_graph = build_graph()
 
 
@@ -81,11 +79,11 @@ app = FastAPI(
 # Permissive CORS is fine here: the real access boundary is the shared access code
 # (api/auth.py), not same-origin policy, and the frontend sends its credential as a
 # plain custom header (X-Access-Code), never a cookie, so allow_credentials stays
-# False and a wildcard origin can't be abused to steal a session the way it could with
-# cookie-based auth. Needed for local dev, where the Vite dev server (a different
-# origin/port) talks to this API directly; in the Phase 7c Docker image the frontend
-# is served by this same app, so it's same-origin there and this middleware is a
-# no-op in practice.
+# False and a wildcard origin can't be abused to steal a session the way cookie-based
+# auth could be. Needed for local dev, where the Vite dev server (a different
+# origin/port) talks to this API directly; in the Docker image the frontend is served
+# by this same app, so it's same-origin there and this middleware is a no-op in
+# practice.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -96,13 +94,13 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_and_record_requests(request: Request, call_next):
-    """Every request through one place: one structured log line + one metrics update,
-    regardless of which route handled it (or whether it 500'd). `request.url.path` is
-    used as the metrics/log key rather than a route template (e.g. "/history/{id}")
-    because FastAPI only resolves the matched route AFTER this middleware runs; that's
-    fine at this traffic scale (history IDs are UUIDs, so they won't collapse into a
-    misleadingly "popular" single bucket the way a numeric ID might, and a portfolio
-    demo doesn't have enough unique history records for that to matter anyway).
+    """Every request goes through one place: one structured log line + one metrics
+    update, regardless of which route handled it (or whether it 500'd). Uses
+    request.url.path as the metrics/log key rather than a route template like
+    "/history/{id}", since FastAPI only resolves the matched route after this
+    middleware runs. Fine at this traffic scale -- history IDs are UUIDs, so they
+    won't collapse into a misleadingly "popular" bucket the way a numeric ID might,
+    and a portfolio demo doesn't have enough history records for that to matter.
     """
     started_at = time.monotonic()
     response = None
@@ -130,9 +128,9 @@ async def log_and_record_requests(request: Request, call_next):
 
 
 # --- request/response models ---
-# Deliberately separate from the internal schemas/*.py Pydantic models (which are the
-# LLM's structured-output contract, tuned for prompting via Field descriptions) — these
-# are the HTTP contract, and the two are allowed to drift independently.
+# Kept separate from the internal schemas/*.py Pydantic models (which are the LLM's
+# structured-output contract, tuned for prompting via Field descriptions) -- these are
+# the HTTP contract instead, and the two are allowed to drift independently.
 
 
 class JDTextRequest(BaseModel):
@@ -195,8 +193,8 @@ class HistoryDetail(HistorySummary):
 
 @app.get("/health")
 def health() -> dict:
-    """No LLM call, no access code required — deployment platforms probe this without
-    any custom header, and it's useful to be able to check the service is up even
+    """No LLM call, no access code required -- deployment platforms probe this
+    without any custom header, and it's useful to check the service is up even
     without the code in hand."""
     settings = get_settings()
     return {"status": "ok", "api_key_configured": bool(settings.openai_api_key)}
@@ -204,12 +202,12 @@ def health() -> dict:
 
 @app.get("/metrics")
 def metrics_snapshot() -> dict:
-    """No access code required, same reasoning as /health: this is an ops endpoint,
-    not a data endpoint. It exposes aggregate counts and latencies only -- no JD text,
-    no cover letters, no access codes, nothing tied to an individual client_id -- so
-    unlike /gap-analysis, /draft, and /history, gating it behind the shared code would
-    only make it harder to check the service's health, not protect anything sensitive.
-    Resets to zero on every process restart (in-memory only -- see observability.py).
+    """No access code required, same reasoning as /health -- this is an ops endpoint,
+    not a data endpoint. It only exposes aggregate counts and latencies, no JD text,
+    cover letters, access codes, or anything tied to a client_id, so gating it behind
+    the shared code would only make it harder to check the service's health without
+    protecting anything sensitive. Resets to zero on every process restart (in-memory
+    only, see observability.py).
     """
     return metrics.snapshot()
 
@@ -219,15 +217,14 @@ def auth_verify(
     _rl: None = Depends(rate_limit(5)),
     _: None = Depends(require_access_code),
 ) -> dict:
-    """What the frontend's login screen calls to check a code before storing it —
-    needs to be reachable WITHOUT already having a verified code, so it can't itself
-    require one via any means other than the header being checked, i.e. this route's
-    entire job is running require_access_code and reporting whether it raised.
+    """What the frontend's login screen calls to check a code before storing it --
+    needs to be reachable without already having a verified code, so its whole job is
+    just running require_access_code and reporting whether it raised.
 
-    `rate_limit(5)` is listed BEFORE `require_access_code` on purpose: FastAPI
-    resolves Depends() in declared order, so a wrong access code no longer gets a
-    free pass on the limit by raising its 401 first — see api/rate_limit.py's
-    docstring for how that hole was found and confirmed fixed.
+    rate_limit(5) is listed before require_access_code on purpose: FastAPI resolves
+    Depends() in declared order, so a wrong access code no longer gets a free pass on
+    the limit by raising its 401 first -- see api/rate_limit.py for how that hole was
+    found and fixed.
     """
     return {"ok": True}
 
@@ -267,8 +264,8 @@ def gap_analysis(
 
 
 def _pending_review_response(thread_id: str, result: dict) -> DraftStepResponse:
-    """Build a DraftStepResponse from a graph result that just hit human_review's
-    interrupt() -- `result["__interrupt__"][0].value` is exactly the `payload` dict
+    """Builds a DraftStepResponse from a graph result that just hit human_review's
+    interrupt() -- result["__interrupt__"][0].value is exactly the payload dict
     _node_human_review (build_graph.py) passed to interrupt()."""
     interrupt_payload = result["__interrupt__"][0].value
     draft = interrupt_payload["draft"]  # already a plain dict (draft.model_dump())
@@ -288,7 +285,7 @@ def _pending_review_response(thread_id: str, result: dict) -> DraftStepResponse:
 
 
 def _approved_response(thread_id: str, result: dict) -> DraftStepResponse:
-    """Build a DraftStepResponse from a graph result that reached END (the human
+    """Builds a DraftStepResponse from a graph result that reached END (the human
     approved and no interrupt is pending)."""
     return DraftStepResponse(
         thread_id=thread_id,
@@ -328,9 +325,9 @@ def draft(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
     # route_after_critic always sends the graph to human_review (pass or exhausted
-    # revision budget), so this should always be true -- but if a future change to
-    # the graph ever let it reach END on the very first call, degrade gracefully to
-    # an "approved" response (and record history) rather than crashing on a KeyError.
+    # revision budget), so this branch should never trigger -- but if a future change
+    # to the graph let it reach END on the very first call, this degrades to an
+    # "approved" response (and records history) instead of crashing on a KeyError.
     if "__interrupt__" not in result:
         response = _approved_response(thread_id, result)
         insert_history(
@@ -395,7 +392,7 @@ def history_list(
     _: None = Depends(require_access_code),
     client_id: str = Depends(get_client_id),
 ) -> list[HistorySummary]:
-    """Summaries only (no jd_text/result) — the list view doesn't need the full
+    """Summaries only (no jd_text/result) -- the list view doesn't need the full
     payload, and keeping it light matters once someone has dozens of past runs."""
     records = list_history(get_settings().history_db_path, client_id)
     return [
@@ -423,16 +420,16 @@ def history_detail(
     )
 
 
-# --- Phase 7c: serve the built frontend (if present) ---
-# Must be registered LAST: Starlette matches routes in registration order, and a Mount
-# at "/" matches every path, so every @app.get/@app.post route above needs to already
-# be in app.router.routes before this runs, or the mount would shadow them.
+# --- serve the built frontend, if present ---
+# Must be registered last: Starlette matches routes in registration order, and a
+# Mount at "/" matches every path, so every @app.get/@app.post route above needs to
+# already be in app.router.routes before this runs, or the mount would shadow them.
 #
 # FRONTEND_DIST_DIR is unset in local dev (Vite's own dev server serves the frontend
-# there instead — see frontend/vite.config.js's proxy) and set to /app/frontend_dist
+# there instead -- see frontend/vite.config.js's proxy) and set to /app/frontend_dist
 # by the Docker image (see ../../../Dockerfile), so this mount is a no-op except in
-# the built container. html=True serves frontend_dist/index.html for "/" — the SPA has
-# no client-side routes of its own (App.jsx switches tabs via React state, not a
+# the built container. html=True serves frontend_dist/index.html for "/" -- the SPA
+# has no client-side routes of its own (App.jsx switches tabs via React state, not a
 # router), so nothing else needs a fallback.
 _frontend_dist = os.getenv("FRONTEND_DIST_DIR")
 if _frontend_dist and Path(_frontend_dist).is_dir():

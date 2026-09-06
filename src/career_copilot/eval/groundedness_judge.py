@@ -1,9 +1,9 @@
-"""Phase 5: a SEPARATE LLM-as-judge pass, used only for evals — not part of the
-production critic loop in graph/critic.py.
+"""A separate LLM-as-judge pass, used only for evals -- not part of the production
+critic loop in graph/critic.py.
 
-This is where the "LLM-as-judge noise" limitation flagged back in Phase 4 (see
-README's engineering notes — the same sentence's verdict could flip between calls)
-gets addressed directly, instead of just noted: rather than trusting one judge call,
+This is where the "LLM-as-judge noise" limitation flagged in the README's engineering
+notes (the same sentence's verdict could flip between calls) gets addressed directly,
+instead of just noted: rather than trusting one judge call,
 ask the same question `n_votes` times and look at the SPREAD, not just the average. A
 tight cluster of scores is a signal the judge's opinion is real and reproducible; a
 wide spread is a signal today's single score would have been noise, not a genuine

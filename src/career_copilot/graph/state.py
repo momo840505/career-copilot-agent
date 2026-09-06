@@ -1,10 +1,10 @@
-"""Phase 4b: shared state schema for the LangGraph StateGraph.
+"""Shared state schema for the LangGraph StateGraph.
 
 InMemorySaver keeps checkpoints in this process's memory, so arbitrary Python
 objects (Pydantic models, dataclasses) are fine as field values here. If this
 ever moves to a persistent checkpointer (Sqlite/Postgres, so a run survives a
-process restart — a Phase 6/7 concern) every field would need to become
-JSON-serializable first; not needed yet.
+process restart) every field would need to become JSON-serializable first; not
+needed yet.
 
 `total=False` because the graph fills this in progressively: only `jd_text`
 is present at the start, and each node only ever returns the few keys it's

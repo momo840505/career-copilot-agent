@@ -13,11 +13,11 @@ pydantic>=2.9
 python-dotenv>=1.0.1
 pyyaml>=6.0
 
-# --- API layer (Phase 6) ---
+# --- API layer ---
 fastapi>=0.115
 uvicorn[standard]>=0.30
 
-# --- MCP server (Phase 6) ---
+# --- MCP server ---
 # Pinned to the v2.x line deliberately: mcp>=1.0.0 (unpinned) would silently pick up
 # whichever major version is newest at install time, and the SDK made a breaking change
 # between v1.x (`from mcp.server.fastmcp import FastMCP`) and v2.x (`from mcp.server

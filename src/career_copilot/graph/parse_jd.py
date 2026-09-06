@@ -1,4 +1,4 @@
-"""Phase 2, node 1: turn raw job-description text into validated JDRequirements."""
+"""Turns raw job-description text into validated JDRequirements."""
 from __future__ import annotations
 
 from langchain_core.messages import HumanMessage, SystemMessage

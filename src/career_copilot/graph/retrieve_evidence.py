@@ -1,4 +1,4 @@
-"""Phase 3, node 2: for every JD requirement, retrieve the most relevant portfolio evidence.
+"""For every JD requirement, retrieves the most relevant portfolio evidence.
 
 One retrieval call per requirement (not one big query for the whole JD) is deliberate:
 gap_analysis needs to see, requirement by requirement, whether *anything* relevant came

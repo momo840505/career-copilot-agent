@@ -4,7 +4,7 @@ Why chunk at all instead of embedding the whole document? Two reasons that matte
 this project specifically:
   1. Retrieval precision — a JD requirement like "SQL" should pull back the 2-3 sentences
      about SQL/PostgreSQL, not the entire 500-word project write-up diluting the match.
-  2. Citation granularity — Phase 4's critic checks "does this sentence in the draft trace
+  2. Citation granularity -- the critic checks "does this sentence in the draft trace
      back to a real chunk?". That check is only meaningful if chunks are small enough that
      citing one actually commits to a specific claim.
 """

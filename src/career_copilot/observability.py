@@ -1,31 +1,24 @@
-"""Phase 7e: structured logging + a lightweight in-process metrics registry.
+"""Structured logging plus a small in-process metrics registry.
 
-Two things live here:
+configure_logging() sets up the root logger once at process startup -- either a JSON
+formatter (LOG_FORMAT=json, what the Docker image uses, see docker/entrypoint.sh) or a
+plain human-readable one (the local-dev default, since a real terminal is nicer to
+read than JSON lines). Render just tails stdout, so JSON-per-line is greppable there
+and would also pipe straight into a real log aggregator later without touching any
+application code.
 
-1. `configure_logging()` -- sets up the root logger once, at process startup, with
-   either a JSON formatter (LOG_FORMAT=json, the default in the Docker image -- see
-   docker/entrypoint.sh) or a plain human-readable formatter (the default in local
-   dev, where a real terminal is more pleasant to read than JSON lines). Render's
-   dashboard just tails stdout, so JSON-per-line is the right shape there: it's
-   greppable, and if this ever outgrows Render's own Logs tab it's already shaped to
-   pipe straight into a real log aggregator without changing any application code.
+`metrics` is a process-wide, thread-safe counter registry. Render's free tier runs one
+instance with no persistent disk, so Prometheus or a real time-series DB would be
+solving a problem this doesn't have -- in-memory counters are enough. It tracks the
+two things worth checking when something looks wrong: is the API taking traffic and
+returning errors (per-route count / latency / status-code breakdown), and is the LLM
+pipeline healthy or burning retries (per-node call / retry / STUCK / failure counts --
+STUCK here is the same stuck-retry case graph/structured.py's invoke_structured deals
+with). GET /metrics in api/app.py just serializes a snapshot of this as JSON.
 
-2. `metrics` -- a process-wide, thread-safe counter registry. Render's free tier runs
-   exactly one instance with no persistent disk, so anything fancier than in-memory
-   counters (Prometheus, a real time-series DB) would be solving a problem this
-   deployment doesn't have. What it tracks answers the two questions an operator
-   actually asks first when something looks wrong: "is the API taking traffic and
-   returning errors?" (per-route request count / latency / status-code breakdown) and
-   "is the LLM pipeline healthy, or is it burning retries?" (per-node call / retry /
-   STUCK / failure counts -- the STUCK counter in particular is exactly the failure
-   mode `graph/structured.py`'s invoke_structured docstring describes: a temperature-0
-   model regenerating the identical wrong answer instead of actually retrying).
-   GET /metrics (api/app.py) serializes a snapshot of this as JSON.
-
-Kept intentionally small: no persistence, no percentiles, no external dependency.
-Restarting the process resets it -- same as Render restarting the container resets
-everything else non-persistent (the Chroma index, history.db) unless a paid disk is
-attached.
+Kept small on purpose: no persistence, no percentiles, no external dependency.
+Restarting the process resets it, same as restarting the container resets everything
+else non-persistent (the Chroma index, history.db) unless a paid disk is attached.
 """
 from __future__ import annotations
 
@@ -42,10 +35,9 @@ from dataclasses import dataclass, field
 
 class _JsonFormatter(logging.Formatter):
     """One JSON object per log line: timestamp, level, logger name, message, plus
-    whatever structured fields the caller passed via `extra={...}` (route, status_code,
-    duration_ms, node, attempts, ...). Anything already on a stock LogRecord (the
-    reserved keys below) is skipped so it isn't duplicated under its raw attribute
-    name."""
+    whatever extra fields the caller passed (route, status_code, duration_ms, node,
+    attempts, ...). Skips anything already on a stock LogRecord so it doesn't get
+    duplicated under its raw attribute name."""
 
     _RESERVED = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__.keys()) | {
         "message",
@@ -71,14 +63,13 @@ _configured = False
 
 
 def configure_logging() -> None:
-    """Idempotent -- safe to call from api/app.py at import time AND from any CLI
-    script's entry point without risking duplicate handlers (e.g. under uvicorn's
-    --reload, which re-imports the app module in a fresh subprocess anyway, but a
-    stray second call in the same process must not double every log line).
+    """Idempotent -- safe to call from both api/app.py at import time and any CLI
+    script's entry point without doubling up handlers if it somehow gets called twice
+    in the same process.
 
-    LOG_LEVEL defaults to INFO. LOG_FORMAT defaults to "plain" (readable in a local
-    terminal); the Docker image sets LOG_FORMAT=json (see docker/entrypoint.sh) so
-    Render's log tail is one grep-able/parseable JSON object per line.
+    LOG_LEVEL defaults to INFO. LOG_FORMAT defaults to "plain" (readable locally); the
+    Docker image sets LOG_FORMAT=json (see docker/entrypoint.sh) so Render's log tail
+    is one parseable JSON object per line.
     """
     global _configured
     if _configured:
@@ -138,10 +129,10 @@ class _RouteStats:
 
 
 class Metrics:
-    """Thread-safe: uvicorn can (and by default does, for sync def routes like the
-    ones in api/app.py) run request handlers on a thread pool even within a single
-    process, so this locks on every update. Cheap enough not to matter at this
-    traffic scale -- a portfolio demo, not a high-throughput service."""
+    """Thread-safe: uvicorn runs sync def routes (like the ones in api/app.py) on a
+    thread pool even within one process, so this locks on every update. That's cheap
+    enough not to matter at this traffic scale -- a portfolio demo, not a
+    high-throughput service."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -185,7 +176,7 @@ class Metrics:
             }
 
 
-# Module-level singleton, same pattern as get_settings() being the one place config
-# is read from -- every node and the API layer import THIS instance rather than
-# constructing their own, so counts actually accumulate across a request.
+# Module-level singleton, same idea as get_settings() -- every node and the API layer
+# import this one instance instead of building their own, so counts actually add up
+# across requests.
 metrics = Metrics()

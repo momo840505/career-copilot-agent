@@ -1,4 +1,4 @@
-# Phase 7c: multi-stage build -- the React frontend is compiled to static files in
+# Multi-stage build -- the React frontend is compiled to static files in
 # stage 1, then copied into the Python image in stage 2. The final image needs no
 # Node.js at all, and the FastAPI app (src/career_copilot/api/app.py) serves both the
 # API and the built frontend on the same origin, so there's nothing else to deploy.

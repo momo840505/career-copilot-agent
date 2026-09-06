@@ -1,4 +1,4 @@
-"""Structured extraction schema for a job description (Phase 2's parse_jd node)."""
+"""Structured extraction schema for a job description (parse_jd.py)."""
 from __future__ import annotations
 
 from typing import Literal

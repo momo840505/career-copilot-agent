@@ -1,5 +1,5 @@
 """CLI: run the full career-copilot-agent pipeline as an actual LangGraph
-StateGraph (Phase 4b) — same pipeline as draft_and_critique_demo.py, but the
+StateGraph -- same pipeline as draft_and_critique_demo.py, but the
 draft_writer <-> critic loop is now a real conditional edge instead of a
 Python for-loop, and there's a genuine human-in-the-loop pause (via
 interrupt()/Command(resume=...)) before a letter counts as final.

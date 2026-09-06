@@ -1,4 +1,5 @@
-"""Phase 3, node 3: compare JD requirements against retrieved evidence, honestly."""
+"""Compares a JD's requirements against the retrieved evidence, and tries hard to
+stay honest about what's a real match versus wishful thinking."""
 from __future__ import annotations
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -73,33 +74,27 @@ def check_citations_are_real(report: GapReport, valid_ids: set[str]) -> GapRepor
 
 
 def reclassify_uncited_as_missing(report: GapReport) -> GapReport:
-    """The system prompt defines "matched"/"partial" as buckets that exist *because*
-    there's real evidence, and "missing" as the one with none — but nothing in the
-    schema enforced that. A matched/partial item with an empty evidence_chunk_ids list
-    is a "missing" item mis-filed, and left uncaught it becomes draft_writer's problem
-    instead: _format_gap_report shows it as `[evidence: []]`, draft_writer is told to
-    write a claim for it anyway, and — even though its own prompt explicitly forbids
-    ever inventing a chunk_id — under that pressure it has been observed reaching for a
-    placeholder like "_" rather than dropping the claim (see draft_writer.py's module
-    docstring, and the golden-eval failure that motivated this check).
+    """The prompt defines "matched"/"partial" as buckets that only exist because
+    there's real evidence, and "missing" as the one with none -- but nothing in the
+    schema enforces that. A matched/partial item with an empty evidence_chunk_ids list
+    is really a "missing" item that got mis-filed. Left alone it becomes
+    draft_writer's problem: _format_gap_report shows it as `[evidence: []]`,
+    draft_writer still gets told to write a claim for it, and even though its prompt
+    forbids inventing a chunk_id, it's reached for a placeholder like "_" instead of
+    just dropping the claim.
 
-    This used to raise ValueError and spend a retry asking the model to pick one of the
-    two honest fixes itself (reclassify as "missing", or cite a real chunk_id). That
-    doesn't reliably converge: observed live on the golden eval set, for JDs whose only
-    signal is an adjacent/aspirational skill (e.g. "RPA", "企業流程自動化" — buzzwords the
-    model clearly wants to give some credit for but has no retrieved evidence to back),
-    the model kept re-asserting the exact same matched/partial classification with no
-    citation across every attempt — including after the STUCK note and a bumped
-    temperature (see structured.py) — burning the whole retry budget for a decision it
-    was never going to reverse on its own.
+    This used to raise ValueError and ask the model to fix it itself (reclassify as
+    missing, or cite a real chunk_id) -- but on the golden eval set, for JDs whose
+    only signal is an adjacent/aspirational skill ("RPA", "企業流程自動化"), the model kept
+    re-asserting the same uncited classification on every retry, even after the STUCK
+    note and temperature bump. It was never going to fix this one on its own.
 
-    So resolve it the same way dedupe_requirements resolves its own bucket conflict:
-    deterministically, without spending another LLM call. Moving an uncited item to
-    'missing' is always the honest fallback — it never invents a citation, it just
-    accepts what the item's own empty evidence_chunk_ids already says. A requirement
-    that has real evidence elsewhere isn't affected: dedupe_requirements (which must
-    run after this) prefers 'partial'/'matched' over 'missing' for any requirement that
-    ends up duplicated across buckets as a result.
+    So this resolves it deterministically, the same way dedupe_requirements resolves
+    its own conflicts, no extra LLM call needed. Moving an uncited item to 'missing'
+    is always the honest move -- it doesn't invent a citation, it just accepts what
+    the item's own empty evidence_chunk_ids already says. Anything with real evidence
+    elsewhere is unaffected, since dedupe_requirements (which runs after this) prefers
+    'partial'/'matched' over 'missing' when a requirement ends up in both.
     """
     offenders = [item for item in report.matched + report.partial if not item.evidence_chunk_ids]
     if not offenders:
@@ -111,34 +106,31 @@ def reclassify_uncited_as_missing(report: GapReport) -> GapReport:
     return report.model_copy(update={"matched": matched, "partial": partial, "missing": missing})
 
 
-# Preference order used by dedupe_requirements when the SAME bucket-conflict is
-# resolved without going back to the model — see that function's docstring for why
-# this order, specifically, is the honest choice rather than an arbitrary one.
+# Priority order dedupe_requirements uses to resolve a bucket conflict without going
+# back to the model -- see that function's docstring for why this order specifically.
 _BUCKET_KEEP_PRIORITY = ("partial", "matched", "missing")
 
 
 def dedupe_requirements(report: GapReport) -> GapReport:
     """Nothing stops the model from classifying the same requirement into more than
-    one bucket — a genuinely observed failure mode (see the golden eval set), and one
-    where a plain retry doesn't reliably converge: watched live, the model kept
-    resolving the conflict on one requirement only to introduce a fresh one on a
-    *different* requirement, attempt after attempt, for a JD dense enough to have
-    several near-identical requirements to get confused between. Rather than keep
-    spending retries hoping the model eventually lands on a single self-consistent
-    report, this resolves the conflict deterministically and returns a corrected
-    report — no extra LLM call needed, and the result doesn't depend on which attempt
-    happened to come back cleanest.
+    one bucket -- a real failure mode on the golden eval set, and a plain retry
+    doesn't reliably fix it: the model would resolve the conflict on one requirement
+    only to introduce a fresh one on a different requirement next attempt, for a JD
+    dense enough to have several near-identical requirements to mix up. So instead of
+    burning retries hoping it converges, this resolves the conflict deterministically
+    -- no extra LLM call, and the result doesn't depend on which attempt came back
+    cleanest.
 
-    Resolution order, most-preferred bucket first: 'partial' > 'matched' > 'missing'.
-    - A requirement the model couldn't commit to a single bucket for was, by
-      construction, not a case where "matched" was unambiguous — the gap_analysis
-      system prompt's own tie-breaker rule already treats 'partial' as the safe
-      default and reserves 'matched' for the clear-cut case, so when the model itself
-      couldn't decide, 'partial' is the more honest of the two to keep.
-    - 'missing' always loses to either: 'missing' requires zero evidence_chunk_ids
-      (enforced separately, see GapReport's own validator), so a requirement that ALSO
-      appears as matched/partial has real evidence somewhere — "missing" was simply
-      wrong for it, not a competing valid judgment.
+    Resolution order, most preferred first: 'partial' > 'matched' > 'missing'.
+    - A requirement the model couldn't settle on one bucket for wasn't a clear-cut
+      "matched" case to begin with -- the system prompt's own tie-breaker already
+      treats 'partial' as the safe default and reserves 'matched' for the obvious
+      case, so when the model itself couldn't decide, 'partial' is the more honest
+      of the two to keep.
+    - 'missing' always loses to either, since 'missing' requires zero
+      evidence_chunk_ids (enforced by GapReport's own validator) -- so anything that
+      ALSO shows up as matched/partial clearly has evidence somewhere, meaning
+      "missing" was just wrong for it, not a competing valid read.
     """
     buckets = {"matched": list(report.matched), "partial": list(report.partial), "missing": list(report.missing)}
     counts = Counter(item.requirement for items in buckets.values() for item in items)
@@ -212,14 +204,12 @@ def gap_analysis(
         llm,
         GapReport,
         messages,
-        # A denser JD (more requirements) means more independent chances for a
-        # duplicate-bucket conflict in the SAME report, and fixing several at once is a
-        # harder combinatorial problem than fixing one — observed live on the golden
-        # eval set: a JD with ~10 requirements needed more than the default 2 repairs to
-        # shake every conflict out, where a shorter JD converged in 0-1. Every other node
-        # (parse_jd, draft_writer, critic) keeps the invoke_structured default; this is a
-        # deliberate, narrow widening for the one node whose problem size scales with the
-        # JD's requirement count, not a global "just retry more" change.
+        # A denser JD means more chances for a duplicate-bucket conflict in the same
+        # report, and fixing several at once is harder than fixing one -- on the
+        # golden eval set, a ~10-requirement JD needed more than the default 2 repairs
+        # to clear every conflict, where a shorter JD converged in 0-1. This is just
+        # for this node, since its problem size scales with requirement count; the
+        # others (parse_jd, draft_writer, critic) keep the default.
         max_retries=4,
         validate=lambda report: _validate_gap_report(report, valid_ids),
         node_name="gap_analysis",

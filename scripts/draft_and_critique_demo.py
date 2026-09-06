@@ -1,6 +1,7 @@
-"""CLI: run the full chain including the draft_writer <-> critic self-correction
-loop, by hand (a plain Python loop) — before Phase 4b turns this into an actual
-LangGraph StateGraph with conditional edges and a human-approval interrupt.
+"""CLI: run the draft_writer <-> critic loop by hand, as a plain Python loop --
+the version I wrote before wiring it into an actual LangGraph StateGraph
+(build_graph.py). Kept around since it's a simpler read if you just want to see
+the loop logic without the graph machinery around it.
 
     python scripts/draft_and_critique_demo.py path/to/jd.txt
 """
@@ -10,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from career_copilot.graph.critic import critic
+from career_copilot.graph.critic_feedback import accumulate_feedback, verdict_to_feedback_items
 from career_copilot.graph.draft_writer import draft_writer
 from career_copilot.graph.gap_analysis import gap_analysis
 from career_copilot.graph.parse_jd import parse_jd
@@ -69,12 +71,7 @@ def main() -> None:
             print("\n*** Max revisions reached and critic still not satisfied. Stopping. ***")
             break
 
-        new_feedback = verdict.issues + [
-            f'Claim "{c.claim_text}" is not well-grounded: {c.reason}' for c in verdict.ungrounded_claims
-        ]
-        for item in new_feedback:
-            if item not in feedback_history:  # don't pile up exact duplicates
-                feedback_history.append(item)
+        feedback_history = accumulate_feedback(feedback_history, verdict_to_feedback_items(verdict))
         print(f"\n--> Sending back to draft_writer with full feedback history: {feedback_history}")
 
 

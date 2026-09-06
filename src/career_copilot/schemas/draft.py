@@ -1,4 +1,4 @@
-"""Structured output schema for the draft_writer node (Phase 4)."""
+"""Structured output schema for the draft_writer node."""
 from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator

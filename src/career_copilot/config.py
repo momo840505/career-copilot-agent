@@ -1,7 +1,7 @@
 """Central place every other module reads configuration from.
 
 Keeping this as one small module (instead of scattering os.environ calls everywhere)
-means later phases (tests, CI, Docker) only have to mock/override one thing.
+means tests, CI, and Docker only have to mock/override one thing.
 """
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ class Settings:
     chroma_dir: Path
     portfolio_dir: Path
     golden_jds_dir: Path
-    # Phase 7: access_code is None (gate off) unless explicitly set — keeps local dev
-    # exactly as before for anyone who hasn't set it, and turns the shared-secret gate
-    # on the moment a real deployment sets ACCESS_CODE. See api/auth.py.
+    # access_code is None (gate off) unless explicitly set -- keeps local dev exactly
+    # as before for anyone who hasn't set it, and turns the shared-secret gate on the
+    # moment a real deployment sets ACCESS_CODE. See api/auth.py.
     access_code: str | None
     history_db_path: Path
 

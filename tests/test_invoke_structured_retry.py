@@ -1,8 +1,8 @@
-"""invoke_structured's retry-with-repair loop, exercised with fake/scripted LLMs — no
+"""invoke_structured's retry-with-repair loop, exercised with fake/scripted LLMs -- no
 API key needed. This is what actually caught (and now locks in the fix for) the "stuck
-retry" bug found by the Phase 5 golden eval set: a temperature=0 node whose repair
-message is itself deterministic can regenerate the identical wrong answer on every
-attempt, burning the whole retry budget on repeats instead of genuinely different tries.
+retry" bug found by the golden eval set: a temperature=0 node whose repair message is
+itself deterministic can regenerate the identical wrong answer on every attempt,
+burning the whole retry budget on repeats instead of genuinely different tries.
 """
 from __future__ import annotations
 

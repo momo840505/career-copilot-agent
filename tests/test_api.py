@@ -1,4 +1,4 @@
-"""Pure-logic tests for the FastAPI service (Phase 6/7) — no API key needed.
+"""Pure-logic tests for the FastAPI service -- no API key needed.
 
 Every route handler in career_copilot.api.app calls the pipeline functions by name
 imported into that module's namespace (run_parse_jd, run_retrieve_evidence,
@@ -144,7 +144,7 @@ def test_health_reports_ok_and_key_configured_flag_and_needs_no_client_id():
     assert "api_key_configured" in body
 
 
-# --- Phase 7e: GET /metrics ---
+# --- GET /metrics ---
 
 
 def test_metrics_returns_200_with_expected_shape_and_needs_no_client_id():

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Phase 7c: container entrypoint.
+# Container entrypoint.
 #
 # Deployment platforms (Render included) typically give the container an EPHEMERAL
 # filesystem -- a fresh, empty disk on every deploy/restart -- so the Chroma index
@@ -13,7 +13,7 @@
 # markdown files under src/career_copilot/data/portfolio/).
 set -e
 
-# Phase 7e: structured (one-JSON-object-per-line) logs in the container by default --
+# Structured (one-JSON-object-per-line) logs in the container by default --
 # see career_copilot/observability.py. Render's Logs tab just tails stdout, so this is
 # what makes those lines greppable/parseable instead of free-text. Local dev (running
 # scripts/run_api.py directly, never through this script) keeps the human-readable

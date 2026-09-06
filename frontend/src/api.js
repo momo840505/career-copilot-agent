@@ -1,4 +1,4 @@
-// Phase 7b: thin fetch wrapper around the FastAPI backend (api/app.py).
+// Thin fetch wrapper around the FastAPI backend (api/app.py).
 //
 // Two headers matter on almost every call:
 //   - X-Client-Id: a random id generated once per browser and stored in localStorage.
@@ -7,7 +7,7 @@
 //     on get_history/list_history). Anyone could send a different value and see a
 //     different "client's" history; the real protection (such as it is) is the
 //     access code below.
-//   - X-Access-Code: only required when the backend has ACCESS_CODE set (Phase 7's
+//   - X-Access-Code: only required when the backend has ACCESS_CODE set (the
 //     shared-secret gate protecting a public deployment from burning your OpenAI
 //     quota). Left unset in local dev, the backend's gate is a no-op and this header
 //     is simply ignored.

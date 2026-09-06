@@ -1,4 +1,4 @@
-"""Phase 7a: a shared access-code gate, not real per-user login.
+"""A shared access-code gate, not real per-user login.
 
 Deliberately the simplest thing that actually addresses the real risk: once this
 service is deployed with a public URL, every request runs against MY real OpenAI API

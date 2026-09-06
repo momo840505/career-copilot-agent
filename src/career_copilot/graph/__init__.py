@@ -1,7 +1,7 @@
-"""LangGraph nodes and, eventually, the assembled graph.
+"""LangGraph nodes, plus the assembled graph.
 
-Phase 2: parse_jd.py
-Phase 3: retrieve_evidence.py, gap_analysis.py
-Phase 4: draft_writer.py, critic.py, human_review.py, plus graph.py wiring it all
-         together with conditional edges (the self-correction loop).
+parse_jd.py, retrieve_evidence.py, and gap_analysis.py extract and analyze the JD.
+draft_writer.py, critic.py, and human_review.py handle the drafting loop, with
+build_graph.py wiring it all together with conditional edges (the self-correction
+loop).
 """

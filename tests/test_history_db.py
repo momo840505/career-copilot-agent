@@ -1,4 +1,4 @@
-"""Pure-logic tests for career_copilot.api.db (Phase 7a) — no API key needed, no
+"""Pure-logic tests for career_copilot.api.db -- no API key needed, no
 FastAPI involved. Each test gets its own throwaway SQLite file via pytest's tmp_path
 fixture, so tests never touch the real history.db and can't interfere with each other.
 """

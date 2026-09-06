@@ -1,19 +1,19 @@
-"""Phase 7a: SQLite persistence for the site's "history" feature (past gap-analysis
-and cover-letter runs).
+"""SQLite persistence for the "history" feature (past gap-analysis and cover-letter
+runs).
 
-Deliberately plain stdlib `sqlite3`, no ORM: one small table, a handful of queries,
-and this project already leans toward the smallest tool that does the job (see
-`rag/store.py`'s own comment about using chromadb's client directly). A fresh
-connection is opened per call rather than shared/pooled — SQLite connections aren't
-thread-safe by default, and FastAPI runs sync route handlers in a thread pool, so
-sharing one connection across requests would need explicit locking for no real
-benefit at this app's scale. SQLite's own file-level locking handles the rest.
+Plain stdlib sqlite3, no ORM -- one small table and a handful of queries, in keeping
+with this project generally reaching for the smallest tool that does the job (see
+rag/store.py's comment on using chromadb's client directly). Opens a fresh connection
+per call instead of sharing one: sqlite3 connections aren't thread-safe by default,
+and FastAPI runs sync route handlers on a thread pool, so sharing a connection would
+need explicit locking for no real benefit at this scale. SQLite's own file locking
+covers the rest.
 
-There's no per-user account system (see api/auth.py for why: one shared access code,
-not real login) — `client_id` is a random id the frontend generates once and keeps in
-localStorage, purely to give each browser its own "my history" view. It is NOT a
-security boundary: anyone who can call the API at all can pass any client_id they
-like. Treat it as a UI convenience, not an auth mechanism.
+There's no per-user account system (see api/auth.py -- it's one shared access code,
+not real login). `client_id` is just a random id the frontend generates once and
+keeps in localStorage so each browser gets its own "my history" view. It's not a
+security boundary -- anyone who can call the API can pass any client_id they want.
+It's a UI convenience, not auth.
 """
 from __future__ import annotations
 

@@ -11,6 +11,6 @@ history.db*
 evals/results/
 .DS_Store
 
-# Phase 7b: frontend build artifacts / deps -- never commit these
+# Frontend build artifacts / deps -- never commit these
 frontend/node_modules/
 frontend/dist/

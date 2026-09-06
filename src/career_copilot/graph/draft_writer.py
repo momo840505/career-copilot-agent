@@ -1,4 +1,4 @@
-"""Phase 4, node 4: write a grounded, citation-backed cover-letter draft."""
+"""Writes a grounded, citation-backed cover-letter draft."""
 from __future__ import annotations
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -55,16 +55,15 @@ unsupported qualifier entirely, not replacing it with another one.
 
 
 def _format_gap_report(report: GapReport) -> str:
-    """Deliberately shows ONLY matched + partial, each with its own real evidence —
-    never `missing` items, and never `suggested_talking_points`. Two live failures in a
-    row (see README) traced back to exactly those two fields: showing the model a
-    "missing" requirement's name, or an ungrounded talking point that itself bridged a
-    missing item, tempted it into writing a claim it had no real citation for — which it
-    then "solved" by inventing a placeholder chunk_id. A stronger warning didn't fully
-    fix that; not showing it the tempting input in the first place does. The full gap
-    picture (including what's missing) still reaches the human reviewer separately —
-    see human_review's payload — so nothing about honesty is lost, only removed from
-    where it was actively causing harm."""
+    """Only shows matched + partial, each with its own real evidence -- never
+    `missing` items, never `suggested_talking_points`. Two failures in a row traced
+    back to exactly those two fields: showing the model a "missing" requirement's
+    name, or a talking point that bridged a missing item, tempted it into writing a
+    claim with no real citation, which it then "fixed" by inventing a placeholder
+    chunk_id. A stronger warning in the prompt didn't fully fix that -- not showing it
+    the tempting input in the first place does. The full picture (including what's
+    missing) still reaches the human reviewer separately via human_review's payload,
+    so nothing about honesty is lost, just moved somewhere it can't cause harm."""
     lines = ["Matched (safe to draw on):"]
     for item in report.matched:
         lines.append(f"- {item.requirement}: {item.note} [evidence: {item.evidence_chunk_ids}]")

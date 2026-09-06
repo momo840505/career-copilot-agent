@@ -1,13 +1,12 @@
-"""Phase 4b routing-logic tests — pure Python control flow, no API key needed.
+"""Routing-logic tests -- pure Python control flow, no API key needed.
 (These do need langgraph installed, same as every other career_copilot.graph.*
-module — that's a real dependency, not an optional extra.)
+module -- that's a real dependency, not an optional extra.)
 """
 from langgraph.graph import END
 
 import career_copilot.graph.build_graph as build_graph_module
 from career_copilot.graph.build_graph import (
     MAX_REVISIONS,
-    _accumulate_feedback,
     _ALLOWED_CHECKPOINT_TYPES,
     _make_checkpointer,
     _node_critic,
@@ -15,6 +14,7 @@ from career_copilot.graph.build_graph import (
     route_after_critic,
     route_after_human,
 )
+from career_copilot.graph.critic_feedback import accumulate_feedback
 from career_copilot.graph.retrieve_evidence import EvidenceBundle
 from career_copilot.rag.retriever import RetrievedChunk
 from career_copilot.schemas.critic import CriticVerdict
@@ -118,13 +118,13 @@ def test_route_after_human_missing_decision_defaults_to_revise():
 
 def test_accumulate_feedback_dedupes_and_preserves_order():
     history = ["a", "b"]
-    result = _accumulate_feedback(history, ["b", "c"])
+    result = accumulate_feedback(history, ["b", "c"])
     assert result == ["a", "b", "c"]
     assert history == ["a", "b"]  # original list not mutated in place
 
 
 def test_accumulate_feedback_from_none():
-    assert _accumulate_feedback(None, ["x"]) == ["x"]
+    assert accumulate_feedback(None, ["x"]) == ["x"]
 
 
 def test_checkpointer_allowlist_covers_every_agentstate_custom_type():

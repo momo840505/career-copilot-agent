@@ -29,7 +29,7 @@ def test_raises_on_a_hallucinated_chunk_id():
 
 
 def test_format_gap_report_never_shows_missing_items_or_talking_points():
-    # Regression test for the Phase 4b bug: draft_writer was shown "missing" items and
+    # Regression test for a real bug: draft_writer was shown "missing" items and
     # ungrounded suggested_talking_points, and tried to write citable claims about them
     # anyway — inventing placeholder chunk_ids ("_", "") when it couldn't find real
     # evidence. The fix is structural (don't show it these fields at all), so lock that

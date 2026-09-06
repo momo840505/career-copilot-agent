@@ -1,4 +1,4 @@
-"""Phase 8: regression tests for the access-code brute-force hole, and for the
+"""Regression tests for the access-code brute-force hole, and for the
 _hits dict-growth leak found in a follow-up strict audit.
 
 An earlier attempt used slowapi's @limiter.limit() decorator. A live TestClient check

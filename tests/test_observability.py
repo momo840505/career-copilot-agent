@@ -1,4 +1,4 @@
-"""Phase 7e: pure-logic tests for career_copilot/observability.py -- no API key, no
+"""Pure-logic tests for career_copilot/observability.py -- no API key, no
 LLM, no FastAPI TestClient needed (that part is covered separately in test_api.py's
 GET /metrics tests). Everything here is stdlib (logging, json, threading), so these
 run anywhere this package installs.

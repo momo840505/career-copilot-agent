@@ -1,11 +1,11 @@
-"""Phase 6: MCP server exposing career-copilot's pipeline as tools any MCP-aware client
+"""MCP server exposing career-copilot's pipeline as tools any MCP-aware client
 (Claude Desktop, an IDE, another agent) can call directly, no HTTP client required.
 
-Built against the mcp[cli] v2.x API. This matters: the SDK made a breaking change
-between v1.x (`from mcp.server.fastmcp import FastMCP`) and v2.x (`from mcp.server import
-MCPServer`, the class itself renamed) — see the comment on the `mcp[cli]` pin in
-requirements.txt for how this was caught. Written and verified against v2's README
-directly, not carried over from an older tutorial.
+Built against the mcp[cli] v2.x API -- worth flagging because the SDK made a breaking
+change between v1.x (`from mcp.server.fastmcp import FastMCP`) and v2.x (`from
+mcp.server import MCPServer`, the class itself renamed). See the `mcp[cli]` pin
+comment in requirements.txt for how I caught that. Written against v2's README
+directly, not copied from an older tutorial that would've used the old import.
 
 Run it with either:
     mcp dev src/career_copilot/mcp_server.py        # interactive inspector

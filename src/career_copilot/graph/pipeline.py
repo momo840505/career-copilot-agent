@@ -1,17 +1,14 @@
-"""Phase 5: run the full parse_jd -> retrieve_evidence -> gap_analysis -> draft_writer
-<-> critic pipeline to completion WITHOUT a human in the loop — for evals and any other
-automated/batch use where nobody's there to click approve.
+"""Runs parse_jd -> retrieve_evidence -> gap_analysis -> draft_writer <-> critic
+end to end with no human in the loop. Used by evals and anything else that needs
+to run unattended.
 
-This deliberately mirrors draft_and_critique_demo.py's loop exactly (same MAX_REVISIONS
-bound, same feedback-accumulation rule as build_graph.py's `_node_critic`) rather than
-replacing either of them. Yes, that's the same loop logic living in three places now
-(the demo script, the LangGraph node, and this function) — a real, acknowledged
-duplication. The alternative was refactoring the demo script or the graph nodes to
-share this, and both are already live-verified against real API output across many
-rounds of debugging with no API access available in this environment to re-verify a
-refactor; the risk of silently breaking working, hard-won behavior outweighed the
-cost of one extra copy of a ~15-line loop. Worth revisiting later with real test
-coverage backing it, not now.
+The draft/critic retry loop here is a plain Python for-loop; build_graph.py runs
+the same two steps as LangGraph nodes with a conditional edge instead, since a
+compiled graph and a for-loop are just different execution models and one can't
+call the other. What COULD drift between them -- turning a critic verdict into
+feedback text, and merging that into the running history -- is pulled out into
+critic_feedback.py and imported by both, so that part can't silently go out of
+sync.
 """
 from __future__ import annotations
 
@@ -19,6 +16,7 @@ from dataclasses import dataclass
 
 from career_copilot.config import Settings, get_settings
 from career_copilot.graph.critic import critic as run_critic
+from career_copilot.graph.critic_feedback import accumulate_feedback, verdict_to_feedback_items
 from career_copilot.graph.draft_writer import draft_writer as run_draft_writer
 from career_copilot.graph.gap_analysis import gap_analysis as run_gap_analysis
 from career_copilot.graph.parse_jd import parse_jd as run_parse_jd
@@ -61,28 +59,17 @@ def run_pipeline(
             jd, gap_report, bundles, revision_feedback=feedback_history or None, settings=settings
         )
         verdict = run_critic(draft, gap_report, bundles, settings=settings)
-        # attempt 1 is the initial draft, not a revision -- attempt N (N>1) is
-        # revision (N-1). Set this unconditionally (pass or fail) so it's always
-        # "how many revisions this draft is the result of", not "which attempt
-        # number this is" -- the old `revision_count = attempt` inside the fail
-        # branch below over-counted by exactly 1 whenever the budget was fully
-        # exhausted without ever passing (eval/metrics.py's critic_converged
-        # would report e.g. "3/2 revisions" for a run that only ever spent the
-        # 2 revisions max_revisions actually allows), since that assignment was
-        # never superseded by a later, correct value the way it is in every path
-        # that eventually succeeds. See tests/test_pipeline_revision_count.py for
-        # the concrete before/after numbers across every outcome.
+        # attempt 1 is the initial draft, attempt N (N>1) is revision N-1. Set this
+        # every time, pass or fail, so it always means "how many revisions this
+        # draft went through" -- see tests/test_pipeline_revision_count.py.
         revision_count = attempt - 1
         if verdict.passed:
             break
         if attempt == max_revisions + 1:
             break
-        new_feedback = verdict.issues + [
-            f'Claim "{c.claim_text}" is not well-grounded: {c.reason}' for c in verdict.ungrounded_claims
-        ]
-        for item in new_feedback:
-            if item not in feedback_history:
-                feedback_history.append(item)
+        feedback_history = accumulate_feedback(
+            feedback_history, verdict_to_feedback_items(verdict)
+        )
 
     assert draft is not None and verdict is not None  # loop above always runs >=1 time
     return PipelineResult(

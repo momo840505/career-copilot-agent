@@ -1,7 +1,7 @@
 """Query-time retrieval: turn a question/requirement into the top-k most relevant chunks.
 
-This is what Phase 3's retrieve_evidence node will call once per JD requirement (e.g. once
-for "SQL", once for "cloud deployment", once for "stakeholder communication").
+This is what retrieve_evidence.py calls once per JD requirement (e.g. once for "SQL",
+once for "cloud deployment", once for "stakeholder communication").
 """
 from __future__ import annotations
 

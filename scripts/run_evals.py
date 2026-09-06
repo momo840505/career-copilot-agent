@@ -1,6 +1,6 @@
 """CLI: run the golden JD set (src/career_copilot/data/golden_jds/*.txt) through the
-full pipeline and report objective + groundedness metrics for each — Phase 5's eval
-harness. Exits non-zero if any HARD gate fails (citation validity, no missing-skill
+full pipeline and report objective + groundedness metrics for each. Exits non-zero if
+any HARD gate fails (citation validity, no missing-skill
 leak, critic convergence); the groundedness judge score is reported but only warns,
 since it's noisier by nature (see groundedness_judge.py) and isn't held to a hard
 threshold here.
