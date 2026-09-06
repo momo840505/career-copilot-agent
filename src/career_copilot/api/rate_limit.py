@@ -57,6 +57,20 @@ def rate_limit(max_per_minute: int):
         key = (_client_ip(request), request.url.path)
         now = time.monotonic()
         with _lock:
+            # Opportunistic sweep: drop any (IP, route) entry whose whole window has
+            # already expired -- not just this request's own key. Without this,
+            # _hits gains one entry per distinct (IP, route) pair ever seen and NEVER
+            # shrinks again, even long after that IP stops sending requests -- a real,
+            # slow memory leak on a long-lived single instance getting varied or bot
+            # traffic (Render's free tier spinning down after 15 idle minutes hides
+            # this in casual testing, but it's still a real bug). A single-instance
+            # in-memory limiter doesn't need anything fancier than a sweep like this.
+            stale_keys = [
+                k for k, v in _hits.items() if not v or now - v[-1] > _WINDOW_SECONDS
+            ]
+            for k in stale_keys:
+                del _hits[k]
+
             hits = _hits[key]
             while hits and now - hits[0] > _WINDOW_SECONDS:
                 hits.popleft()

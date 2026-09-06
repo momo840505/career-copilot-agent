@@ -1,12 +1,20 @@
-"""Phase 8: regression test for the access-code brute-force hole.
+"""Phase 8: regression tests for the access-code brute-force hole, and for the
+_hits dict-growth leak found in a follow-up strict audit.
 
 An earlier attempt used slowapi's @limiter.limit() decorator. A live TestClient check
 (see api/rate_limit.py's module docstring) showed it didn't actually work: FastAPI
 resolves a route's other Depends() (require_access_code) before ever calling the
 decorated endpoint function, so a wrong access code returned its 401 and skipped the
-rate check entirely -- unlimited wrong-code guessing was still possible. This test
-locks in the fix (rate_limit() as its own Depends(), listed before require_access_code)
-so that regression can't come back unnoticed.
+rate check entirely -- unlimited wrong-code guessing was still possible. The first two
+tests below lock in the fix (rate_limit() as its own Depends(), listed before
+require_access_code) so that regression can't come back unnoticed.
+
+A separate audit pass caught that _hits (the module-level counter dict) never removed
+an entry once created -- every distinct (IP, route) pair ever seen stayed in memory
+forever, even long after that caller stopped sending requests. On a long-lived single
+instance getting varied or bot traffic, that's a slow, real memory leak. The sweep
+added to rate_limit()'s dependency (drop any fully-expired entry, not just the current
+key, on every call) is locked in by test_stale_entries_get_swept_from_memory below.
 """
 from __future__ import annotations
 
@@ -61,3 +69,30 @@ def test_rate_limit_is_per_route_not_global() -> None:
     for _ in range(10):
         client.post("/auth/verify")
     assert client.get("/health").status_code == 200
+
+
+def test_stale_entries_get_swept_from_memory() -> None:
+    """The leak an audit pass caught: without the sweep, _hits keeps one entry per
+    distinct (IP, route) pair FOREVER, even once that entry's whole window has long
+    since expired. Simulate that by manually back-dating an old entry's timestamp
+    past the window, then confirm the NEXT request from a different caller sweeps it
+    out -- not just prunes its own key, the whole dict.
+    """
+    from career_copilot.api.app import app
+
+    _reset_rate_limit_state()
+    client = TestClient(app)
+
+    # Simulate a caller that hit the limiter once, long enough ago that its window
+    # has fully expired -- this is the entry that must NOT survive forever. Keyed on
+    # /auth/verify specifically because that route actually goes through rate_limit()
+    # -- /health does not, so a request there would never trigger the sweep at all.
+    stale_key = ("203.0.113.1", "/auth/verify")
+    _hits[stale_key].append(0.0)  # time.monotonic()==0.0 is always > _WINDOW_SECONDS ago
+
+    assert stale_key in _hits
+    # A request from a DIFFERENT (simulated) caller to the same rate-limited route
+    # should trigger the sweep and clear the stale entry out, proving the sweep looks
+    # at the whole dict, not just whatever key the current request happens to use.
+    client.post("/auth/verify")
+    assert stale_key not in _hits, "stale (IP, route) entries must be swept, not kept forever"

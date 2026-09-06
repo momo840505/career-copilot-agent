@@ -265,6 +265,11 @@ own. The caller reviews it and calls the decision endpoint with `approve` or
 (every retry exhausted) maps to `502`, since that's an upstream (the LLM) failure,
 not a bad request. Docs at `/docs` once it's running.
 
+One honest limitation worth flagging: the LangGraph checkpointer behind this is
+in-memory, per process — so a paused (`pending_review`) draft doesn't survive a
+redeploy or restart. Fine for a single-instance demo, not something I'd ship as-is
+for anything with real concurrent users.
+
 **MCP server** (`src/career_copilot/mcp_server.py`): exposes `search_evidence`,
 `analyze_job_description`, and `draft_cover_letter` as MCP tools, so anything that
 speaks MCP (Claude Desktop, an IDE, another agent) can call this pipeline directly.
