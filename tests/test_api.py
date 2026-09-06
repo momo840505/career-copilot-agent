@@ -76,7 +76,7 @@ def _draft() -> CoverLetterDraft:
 def _noop_insert_history(*args, **kwargs):
     """Stand-in for db.insert_history in tests that don't care about persistence --
     avoids ever touching a real SQLite file just because a route succeeded."""
-    return None
+    return
 
 
 class _FakeInterrupt:

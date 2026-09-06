@@ -11,7 +11,6 @@ uncited matched/partial classification attempt after attempt), so it now
 deterministically moves the offending item into 'missing' instead — no LLM call
 needed, and it never invents a citation to do it.
 """
-import pytest
 
 from career_copilot.graph.gap_analysis import reclassify_uncited_as_missing
 from career_copilot.schemas.gap import GapItem, GapReport

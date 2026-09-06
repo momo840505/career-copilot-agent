@@ -2,9 +2,9 @@
 stay honest about what's a real match versus wishful thinking."""
 from __future__ import annotations
 
-from langchain_core.messages import HumanMessage, SystemMessage
-
 from collections import Counter
+
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from career_copilot.config import Settings, get_settings
 from career_copilot.graph.retrieve_evidence import EvidenceBundle, all_chunk_ids

@@ -10,7 +10,6 @@ import logging
 
 from career_copilot.observability import Metrics, _JsonFormatter, configure_logging
 
-
 # --- _JsonFormatter ------------------------------------------------------------------
 
 

@@ -6,12 +6,12 @@ from career_copilot.schemas.draft import Claim, CoverLetterDraft
 
 
 def _valid_kwargs(**overrides):
-    base = dict(
-        greeting="Dear Hiring Manager,",
-        body="I have hands-on experience with Python and SQL.",
-        closing="Best regards,\nMo Wei-Ting",
-        claims=[Claim(text="I have Python experience.", evidence_chunk_ids=["skills::chunk0"])],
-    )
+    base = {
+        "greeting": "Dear Hiring Manager,",
+        "body": "I have hands-on experience with Python and SQL.",
+        "closing": "Best regards,\nMo Wei-Ting",
+        "claims": [Claim(text="I have Python experience.", evidence_chunk_ids=["skills::chunk0"])],
+    }
     base.update(overrides)
     return base
 

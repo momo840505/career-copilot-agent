@@ -6,13 +6,13 @@ from career_copilot.schemas.jd import JDRequirements
 
 
 def _valid_kwargs(**overrides):
-    base = dict(
-        job_title="Data Scientist",
-        must_have_skills=["Python", "SQL"],
-        nice_to_have_skills=["AWS"],
-        keywords=["Python", "SQL", "AWS"],
-        summary="A data scientist role focused on forecasting.",
-    )
+    base = {
+        "job_title": "Data Scientist",
+        "must_have_skills": ["Python", "SQL"],
+        "nice_to_have_skills": ["AWS"],
+        "keywords": ["Python", "SQL", "AWS"],
+        "summary": "A data scientist role focused on forecasting.",
+    }
     base.update(overrides)
     return base
 

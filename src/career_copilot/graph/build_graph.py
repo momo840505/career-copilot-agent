@@ -14,7 +14,8 @@ from career_copilot.graph.critic_feedback import accumulate_feedback, verdict_to
 from career_copilot.graph.draft_writer import draft_writer as run_draft_writer
 from career_copilot.graph.gap_analysis import gap_analysis as run_gap_analysis
 from career_copilot.graph.parse_jd import parse_jd as run_parse_jd
-from career_copilot.graph.retrieve_evidence import EvidenceBundle, retrieve_evidence as run_retrieve_evidence
+from career_copilot.graph.retrieve_evidence import EvidenceBundle
+from career_copilot.graph.retrieve_evidence import retrieve_evidence as run_retrieve_evidence
 from career_copilot.graph.state import AgentState
 from career_copilot.rag.retriever import RetrievedChunk
 from career_copilot.schemas.critic import CriticVerdict, UngroundedClaim

@@ -71,7 +71,7 @@ class JDRequirements(BaseModel):
         return v.strip()
 
     @model_validator(mode="after")
-    def _must_have_wins_over_nice_to_have(self) -> "JDRequirements":
+    def _must_have_wins_over_nice_to_have(self) -> JDRequirements:
         """A skill can't be both required and merely 'nice to have'. Models do this
         occasionally (list a skill in both) — must-have wins, nice-to-have is trimmed."""
         must_lower = {s.lower() for s in self.must_have_skills}

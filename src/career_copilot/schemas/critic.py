@@ -36,7 +36,7 @@ class CriticVerdict(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _passed_is_consistent_with_issues(self) -> "CriticVerdict":
+    def _passed_is_consistent_with_issues(self) -> CriticVerdict:
         if self.passed and (self.issues or self.ungrounded_claims):
             raise ValueError(
                 "passed=True but issues/ungrounded_claims is non-empty — that's a contradiction. "

@@ -6,8 +6,8 @@ from langgraph.graph import END
 
 import career_copilot.graph.build_graph as build_graph_module
 from career_copilot.graph.build_graph import (
-    MAX_REVISIONS,
     _ALLOWED_CHECKPOINT_TYPES,
+    MAX_REVISIONS,
     _make_checkpointer,
     _node_critic,
     _node_draft_writer,
