@@ -32,4 +32,10 @@ else
 fi
 
 echo "==> Starting API server on port ${PORT:-8000}..."
-exec uvicorn career_copilot.api.app:app --host 0.0.0.0 --port "${PORT:-8000}"
+# --proxy-headers/--forwarded-allow-ips: Render sits in front of this container as
+# its own reverse proxy. Without telling uvicorn to trust X-Forwarded-For, every
+# request's request.client.host is Render's proxy IP, not the real caller's -- which
+# would make the per-IP rate limiting in api/app.py treat every visitor as the same
+# client instead of actually isolating an abusive one.
+exec uvicorn career_copilot.api.app:app --host 0.0.0.0 --port "${PORT:-8000}" \
+  --proxy-headers --forwarded-allow-ips='*'

@@ -39,6 +39,7 @@ from pydantic import BaseModel, Field
 
 from career_copilot.api.auth import get_client_id, require_access_code
 from career_copilot.api.db import get_history, init_db, insert_history, list_history
+from career_copilot.api.rate_limit import rate_limit
 from career_copilot.config import get_settings
 from career_copilot.graph.build_graph import build_graph
 from career_copilot.graph.gap_analysis import gap_analysis as run_gap_analysis
@@ -214,17 +215,27 @@ def metrics_snapshot() -> dict:
 
 
 @app.post("/auth/verify")
-def auth_verify(_: None = Depends(require_access_code)) -> dict:
+def auth_verify(
+    _rl: None = Depends(rate_limit(5)),
+    _: None = Depends(require_access_code),
+) -> dict:
     """What the frontend's login screen calls to check a code before storing it —
     needs to be reachable WITHOUT already having a verified code, so it can't itself
     require one via any means other than the header being checked, i.e. this route's
-    entire job is running require_access_code and reporting whether it raised."""
+    entire job is running require_access_code and reporting whether it raised.
+
+    `rate_limit(5)` is listed BEFORE `require_access_code` on purpose: FastAPI
+    resolves Depends() in declared order, so a wrong access code no longer gets a
+    free pass on the limit by raising its 401 first — see api/rate_limit.py's
+    docstring for how that hole was found and confirmed fixed.
+    """
     return {"ok": True}
 
 
 @app.post("/gap-analysis", response_model=GapAnalysisResponse)
 def gap_analysis(
     request: JDTextRequest,
+    _rl: None = Depends(rate_limit(10)),
     _: None = Depends(require_access_code),
     client_id: str = Depends(get_client_id),
 ) -> GapAnalysisResponse:
@@ -297,6 +308,7 @@ def _approved_response(thread_id: str, result: dict) -> DraftStepResponse:
 @app.post("/draft", response_model=DraftStepResponse)
 def draft(
     request: JDTextRequest,
+    _rl: None = Depends(rate_limit(10)),
     _: None = Depends(require_access_code),
     client_id: str = Depends(get_client_id),
 ) -> DraftStepResponse:
@@ -334,6 +346,7 @@ def draft(
 def draft_decision(
     thread_id: str,
     request: DraftDecisionRequest,
+    _rl: None = Depends(rate_limit(10)),
     _: None = Depends(require_access_code),
     client_id: str = Depends(get_client_id),
 ) -> DraftStepResponse:
