@@ -59,3 +59,41 @@ jobs:
       - run: pip install -e .
       - run: python scripts/build_index.py
       - run: python scripts/run_evals.py
+
+  docker-smoke:
+    # Same gating as eval-gate, for the same reason: building the real image and
+    # booting it re-runs docker/entrypoint.sh's index build against the real OpenAI
+    # embeddings API, so this needs the same secret and the same
+    # not-on-every-external-PR guard. Catches a class of bug unit-tests/eval-gate
+    # can't -- a broken Dockerfile, a missing file in a COPY, a container that can't
+    # actually start -- since those never run through pip installing straight into
+    # the runner.
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t career-copilot-agent:ci .
+      - name: Boot the image and wait for /health
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          docker run -d --name cc-smoke -p 8000:8000 \
+            -e OPENAI_API_KEY="$OPENAI_API_KEY" \
+            career-copilot-agent:ci
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health > /dev/null; then
+              echo "Container came up healthy after ${i} check(s)."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Container never became healthy within 60s -- dumping logs:"
+          docker logs cc-smoke
+          exit 1
+      - name: Clean up the container
+        if: always()
+        run: docker rm -f cc-smoke || true

@@ -42,5 +42,16 @@ ENV FRONTEND_DIST_DIR=/app/frontend_dist
 ENV CHROMA_DB_DIR=/app/chroma_db
 ENV HISTORY_DB_PATH=/app/history.db
 
+# Run as a dedicated non-root user rather than root -- standard container hardening
+# (limits what an RCE in this app or a future dependency could actually do), and
+# nothing here needs root once the apt-get install above is done. mkdir the two
+# directories app writes to at runtime (Chroma index, SQLite file) before the chown
+# so they're owned by appuser from the start rather than getting created root-owned
+# on first write.
+RUN mkdir -p /app/chroma_db \
+    && useradd --create-home --shell /bin/false appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8000
 ENTRYPOINT ["./entrypoint.sh"]

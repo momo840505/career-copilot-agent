@@ -323,7 +323,9 @@ edges, `interrupt()`), LangChain (`with_structured_output`), OpenAI API, Pydanti
 (structured-output schemas with validate-and-retry).
 
 **RAG and retrieval:** ChromaDB, chunked resume + 5 project write-ups as the
-corpus, enforced citation checking (no chunk id, no claim).
+corpus, over-fetch + MMR (Maximal Marginal Relevance) re-ranking so retrieved
+evidence isn't just k near-duplicate slices of the same paragraph, enforced
+citation checking (no chunk id, no claim).
 
 **API and frontend:** FastAPI, React 18 + Vite (hand-rolled inline SVG icons, no
 icon library), MCP server, SQLite for history.
@@ -413,6 +415,7 @@ self-correction loop, human-in-the-loop approval via `interrupt()`, prompt
 decisions backed by actual debugging rather than guesswork.
 
 **RAG and retrieval:** vector-store-backed retrieval over a real chunked corpus,
+MMR re-ranking for evidence diversity (not just raw top-k similarity),
 anti-hallucination citation enforcement, evidence formatting designed to shape what
 a downstream LLM step can and can't get away with.
 
