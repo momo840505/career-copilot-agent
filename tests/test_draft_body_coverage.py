@@ -1,6 +1,9 @@
 import pytest
 
-from career_copilot.graph.draft_writer import check_body_claim_coverage
+from career_copilot.graph.draft_writer import (
+    align_claims_to_body,
+    check_body_claim_coverage,
+)
 from career_copilot.schemas.draft import Claim, CoverLetterDraft
 
 
@@ -41,3 +44,27 @@ def test_rejects_claim_not_present_in_body():
 
     with pytest.raises(ValueError, match="Claim text must appear"):
         check_body_claim_coverage(draft)
+
+
+def test_aligns_close_paraphrase_to_exact_body_sentence():
+    body = "I built a forecasting API using FastAPI and Docker for deployment."
+    draft = _draft(
+        body,
+        ["I built a forecasting API with FastAPI and Docker for deployment."],
+    )
+
+    aligned = align_claims_to_body(draft)
+
+    assert aligned.claims[0].text == body
+    assert check_body_claim_coverage(aligned) is aligned
+
+
+def test_alignment_refuses_negation_change():
+    body = "I have not operated Kubernetes in production."
+    draft = _draft(body, ["I have operated Kubernetes in production."])
+
+    aligned = align_claims_to_body(draft)
+
+    assert aligned.claims[0].text == "I have operated Kubernetes in production."
+    with pytest.raises(ValueError, match="Claim text must appear"):
+        check_body_claim_coverage(aligned)
