@@ -3,7 +3,7 @@ langchain-core>=1.6,<2
 langchain-openai>=1.6,<2
 langchain-text-splitters>=1.1,<2
 
-chromadb>=1.5,<2
+chromadb>=1.5.9,<2
 tiktoken>=0.14,<1
 protobuf>=5,<6
 
