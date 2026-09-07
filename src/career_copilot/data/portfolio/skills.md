@@ -1,40 +1,30 @@
 ---
 id: skills
 title: Technical Skills Inventory
-tags: [skills, tools, stack, languages, ml, deployment]
+tags: [skills, tools, stack, languages, ml, deployment, llm, agents]
 ---
 
 # Technical Skills Inventory
 
-## Data science & machine learning
-Python (pandas, scikit-learn, XGBoost), R, SQL. Data cleaning, statistical modeling, and
-applied machine learning. Comfortable with time-series backtesting/validation, experiment
-design, and statistical power calculations.
+## AI and LLM engineering
+LangGraph, LangChain, retrieval-augmented generation (RAG), structured LLM output with
+Pydantic validation, citation checks, critic/revision loops, human-in-the-loop workflows,
+LLM evaluation, MCP server development, and OpenAI API integration.
 
-## Deployment & engineering
-Docker, AWS (Elastic Beanstalk), FastAPI, pytest for automated testing, GitHub Actions CI/CD.
-Also: PySpark, dbt, Terraform (used on the Cyber Risk Intelligence Lakehouse project),
-PostgreSQL, MongoDB, MQTT, WebSocket, React (used on Smart Hydro Alert), Sentence
-Transformers / semantic search (used on GameWise AI).
+## Data science and machine learning
+Python (pandas, scikit-learn, XGBoost), R, SQL, data cleaning, statistical modeling,
+time-series backtesting, experiment design, and statistical power calculations.
 
-## Visualization & business communication
-Tableau (including Tableau Public publishing), Power BI, Excel, data storytelling for
-executive/non-technical audiences.
+## Data and application engineering
+PySpark, dbt, PostgreSQL, MongoDB, FastAPI, React, Docker, GitHub Actions, Terraform,
+AWS Elastic Beanstalk, MQTT, WebSocket, ChromaDB, Sentence Transformers, pytest, and Git.
 
-## Other technical
-HTML5, CSS3, JavaScript (basic front-end), Git, Linux, PostgreSQL. Familiar with PyTorch and
-NLP concepts. Photoshop, Canva for visual assets.
+## Visualization and business communication
+Tableau, Power BI, Excel, executive reporting, and data storytelling for non-technical
+stakeholders.
 
-## Office / productivity
-Word, Excel, PowerPoint, Outlook, Adobe Acrobat. Fast typing: Chinese 75–90 wpm, English
-50–75 wpm.
+## Enterprise systems
+Oracle ERP and Jyu Mao ERP for order, customer, vendor, and operational data workflows.
 
-## ERP systems (from trade career)
-Oracle ERP, 鉅茂 (Jyu Mao) ERP — order management, customer/vendor records.
-
-## Notably NOT yet demonstrated anywhere in the portfolio (as of Sept 2026)
-Agentic LLM orchestration (e.g. LangGraph/LangChain multi-step agents), retrieval-augmented
-generation with enforced source citation, structured-output validation for LLM responses,
-evaluation frameworks for generative AI output (vs. traditional ML metrics), human-in-the-loop
-approval workflows, and MCP (Model Context Protocol) server development. The Career Copilot
-Agent project exists specifically to close this gap.
+## Additional tools
+HTML, CSS, JavaScript, Linux, Photoshop, Canva, Word, PowerPoint, Outlook, and Adobe Acrobat.

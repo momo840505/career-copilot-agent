@@ -1,5 +1,6 @@
-"""Writes a grounded, citation-backed cover-letter draft."""
 from __future__ import annotations
+
+import re
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -12,76 +13,100 @@ from career_copilot.schemas.draft import CoverLetterDraft
 from career_copilot.schemas.gap import GapReport
 from career_copilot.schemas.jd import JDRequirements
 
-_SYSTEM_PROMPT = """You are drafting a short, honest cover-letter-style pitch for a real \
-candidate applying to a real job. Write in first person, as her.
+_SYSTEM_PROMPT = """Write a short, factual cover letter in first person.
 
-You will be given the job's requirements and, below, ONLY the "matched" and "partial" gap-analysis \
-items together with their real supporting evidence. That's a deliberate choice, not an oversight: \
-there is nothing here for a requirement the candidate doesn't have evidence for, so there is \
-nothing to accidentally overclaim, bridge, or invent a citation for — just make the strongest, \
-most honest case from what's actually in front of you. (The full picture, including what's \
-missing, still reaches the human reviewer separately — this letter's job is to make the best \
-honest case, not to enumerate every gap.)
+Use only the matched and partial requirements and the evidence supplied below.
 
-Strict rules:
-- EVERY claim in `claims` must cite at least one real chunk_id, copied EXACTLY \
-character-for-character from the evidence list below. Never invent, abbreviate, or placeholder a \
-chunk_id — an empty string, "_", "N/A", or anything not letter-for-letter present in the evidence \
-list is NEVER valid. If you can't find a real chunk_id that actually backs a sentence, that \
-sentence does not belong in `claims` at all — either drop it or rewrite it into something a real \
-cited chunk does support.
-- For "partial" items, honest bridging is welcome (e.g. "while I haven't directly done X, I've \
-done adjacent Y") — but the claim must still cite that item's own real evidence chunk_id, same as \
-any other claim.
-- Keep the tone warm but factual — no generic filler ("passionate", "hard worker") unless a \
-specific claim backs it. Specific and grounded beats impressive-sounding and vague.
-- `body` should read as natural prose the claims are drawn from — don't just concatenate the \
-claims verbatim, but every sentence that makes a factual assertion should trace to one of the \
-listed claims.
-- MATCH CLAIM STRENGTH TO EVIDENCE SPECIFICITY. Some evidence chunks are detailed (a project \
-description with scope, numbers, outcomes) — a confident, specific claim is fine there. Other \
-chunks are just a bare mention (e.g. a tool name inside a skills list, with no elaboration at \
-all) — for those, the claim must stay equally bare: state plainly that you have used/are \
-familiar with it, and stop there. Do NOT add strength words the evidence doesn't earn — \
-"extensively", "solid", "proficient", "effectively", "various projects", "in-depth" — onto a \
-claim whose only evidence is a name in a list. If you're not sure which case you're in, ask \
-yourself: does the evidence describe HOW MUCH or HOW WELL I used this, or just THAT I have it? \
-If it only says "that", your claim may only say "that" too — e.g. "I have used Excel as part of \
-my work" is fine; "I have used Excel extensively/effectively/proficiently" is not, unless a \
-DIFFERENT cited chunk actually describes the scope or outcome of that use. Rewording a claim \
-that overclaims into a same-strength synonym does not fix it — the fix is removing the \
-unsupported qualifier entirely, not replacing it with another one.
+Rules:
+- Every factual statement about experience, skills, projects, credentials, results, or
+  numbers must be represented in claims.
+- Claim text should be the sentence, or the factual clause, used in the body.
+- Every claim must cite a real chunk_id supplied below.
+- Match the strength of the wording to the evidence. Do not add unsupported qualifiers.
+- Partial matches may be described as adjacent experience, but not as direct experience.
+- Do not invent citations, experience, metrics, employers, tools, or credentials.
+- Keep the body between roughly 100 and 250 words.
 """
+
+_FACTUAL_HINT = re.compile(
+    r"\b(?:I|I've|my)\b.*\b(?:have|used|built|designed|developed|implemented|"
+    r"deployed|created|managed|led|worked|trained|analyzed|analysed|processed|"
+    r"achieved|improved|wrote|tested|experience|degree|project)\b",
+    re.IGNORECASE,
+)
+
+
+def _normalize(value: str) -> str:
+    return " ".join(value.split()).strip().casefold()
 
 
 def _format_gap_report(report: GapReport) -> str:
-    """Only shows matched + partial, each with its own real evidence -- never
-    `missing` items, never `suggested_talking_points`. Two failures in a row traced
-    back to exactly those two fields: showing the model a "missing" requirement's
-    name, or a talking point that bridged a missing item, tempted it into writing a
-    claim with no real citation, which it then "fixed" by inventing a placeholder
-    chunk_id. A stronger warning in the prompt didn't fully fix that -- not showing it
-    the tempting input in the first place does. The full picture (including what's
-    missing) still reaches the human reviewer separately via human_review's payload,
-    so nothing about honesty is lost, just moved somewhere it can't cause harm."""
-    lines = ["Matched (safe to draw on):"]
+    lines = ["Matched:"]
     for item in report.matched:
-        lines.append(f"- {item.requirement}: {item.note} [evidence: {item.evidence_chunk_ids}]")
-    lines.append("\nPartial (you may honestly bridge these, citing their own evidence):")
+        lines.append(
+            f"- {item.requirement}: {item.note} [evidence: {item.evidence_chunk_ids}]"
+        )
+
+    lines.append("\nPartial:")
     for item in report.partial:
-        lines.append(f"- {item.requirement}: {item.note} [evidence: {item.evidence_chunk_ids}]")
+        lines.append(
+            f"- {item.requirement}: {item.note} [evidence: {item.evidence_chunk_ids}]"
+        )
     return "\n".join(lines)
 
 
-def check_claims_cite_real_evidence(draft: CoverLetterDraft, valid_ids: set[str]) -> CoverLetterDraft:
-    """Same pattern as gap_analysis's citation check: the schema can't know what a
-    valid chunk_id is, only the caller (who did the retrieval) knows."""
-    cited = {cid for claim in draft.claims for cid in claim.evidence_chunk_ids}
+def check_claims_cite_real_evidence(
+    draft: CoverLetterDraft,
+    valid_ids: set[str],
+) -> CoverLetterDraft:
+    cited = {
+        chunk_id
+        for claim in draft.claims
+        for chunk_id in claim.evidence_chunk_ids
+    }
     invalid = cited - valid_ids
     if invalid:
         raise ValueError(
-            f"These chunk_ids were cited in claims but were never given to you as evidence: "
-            f"{sorted(invalid)}. Only cite chunk_ids that appear in the evidence list above."
+            f"Unknown evidence chunk_ids in draft claims: {sorted(invalid)}"
+        )
+    return draft
+
+
+def check_body_claim_coverage(draft: CoverLetterDraft) -> CoverLetterDraft:
+    body = _normalize(draft.body)
+    claims = [_normalize(claim.text) for claim in draft.claims]
+
+    missing_from_body = [
+        claim.text
+        for claim, normalized in zip(draft.claims, claims)
+        if normalized not in body
+    ]
+    if missing_from_body:
+        raise ValueError(
+            "Claim text must appear in the cover-letter body: "
+            f"{missing_from_body}"
+        )
+
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+", draft.body)
+        if sentence.strip()
+    ]
+    uncovered = []
+    for sentence in sentences:
+        if not _FACTUAL_HINT.search(sentence):
+            continue
+        normalized = _normalize(sentence)
+        if not any(
+            normalized in claim or claim in normalized
+            for claim in claims
+        ):
+            uncovered.append(sentence)
+
+    if uncovered:
+        raise ValueError(
+            "Factual body sentences must be represented in claims: "
+            f"{uncovered}"
         )
     return draft
 
@@ -97,31 +122,25 @@ def draft_writer(
     llm = get_chat_model(settings, temperature=0.3)
     valid_ids = all_chunk_ids(evidence_bundles)
 
-    human_content = (
+    content = (
         f"Job title: {jd.job_title}\n\n"
         f"Gap analysis:\n{_format_gap_report(gap_report)}\n\n"
-        f"Available evidence (cite only from these chunk_ids):\n"
+        "Available evidence:\n"
         f"{format_evidence_lookup(evidence_bundles)}"
     )
     if revision_feedback:
-        # The FULL history, not just the latest round — otherwise a fix from attempt 1
-        # (e.g. "drop the generic filler") can silently regress in attempt 3 once the
-        # critic stops repeating it, because the writer has no memory of its own past.
-        feedback_list = "\n".join(f"- {item}" for item in revision_feedback)
-        human_content += (
-            "\n\nPrevious drafts were rejected for the following reasons (this is the "
-            "full history — fix every one of these, and do not reintroduce any of them "
-            f"even if a more recent draft happened not to repeat it):\n{feedback_list}"
-        )
+        feedback = "\n".join(f"- {item}" for item in revision_feedback)
+        content += f"\n\nRevision feedback:\n{feedback}"
 
-    messages = [
-        SystemMessage(content=_SYSTEM_PROMPT),
-        HumanMessage(content=human_content),
-    ]
     return invoke_structured(
         llm,
         CoverLetterDraft,
-        messages,
-        validate=lambda draft: check_claims_cite_real_evidence(draft, valid_ids),
+        [
+            SystemMessage(content=_SYSTEM_PROMPT),
+            HumanMessage(content=content),
+        ],
+        validate=lambda draft: check_body_claim_coverage(
+            check_claims_cite_real_evidence(draft, valid_ids)
+        ),
         node_name="draft_writer",
     )

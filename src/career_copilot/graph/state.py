@@ -1,16 +1,3 @@
-"""Shared state schema for the LangGraph StateGraph.
-
-InMemorySaver keeps checkpoints in this process's memory, so arbitrary Python
-objects (Pydantic models, dataclasses) are fine as field values here. If this
-ever moves to a persistent checkpointer (Sqlite/Postgres, so a run survives a
-process restart) every field would need to become JSON-serializable first; not
-needed yet.
-
-`total=False` because the graph fills this in progressively: only `jd_text`
-is present at the start, and each node only ever returns the few keys it's
-responsible for (LangGraph merges a node's returned dict into the running
-state — it isn't replacing the whole state each time).
-"""
 from __future__ import annotations
 
 from typing import TypedDict
@@ -24,6 +11,7 @@ from career_copilot.schemas.jd import JDRequirements
 
 class AgentState(TypedDict, total=False):
     jd_text: str
+    client_id: str
     jd: JDRequirements
     evidence_bundles: list[EvidenceBundle]
     gap_report: GapReport

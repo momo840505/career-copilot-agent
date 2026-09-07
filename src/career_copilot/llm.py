@@ -1,4 +1,3 @@
-"""One place to construct the chat model, so every node builds it the same way."""
 from __future__ import annotations
 
 from langchain_openai import ChatOpenAI
@@ -19,4 +18,6 @@ def get_chat_model(
         api_key=settings.openai_api_key,
         model=model_name or settings.chat_model,
         temperature=temperature,
+        timeout=settings.openai_timeout_seconds,
+        max_retries=settings.openai_max_retries,
     )

@@ -1,24 +1,4 @@
-"""FastAPI service. Same pipeline the CLI demos, MCP server, and eval harness all
-call -- this is just another entry point over it, not a separate implementation.
-
-Run with: python scripts/run_api.py   (docs at http://127.0.0.1:8000/docs)
-
-Error mapping: StructuredOutputError means the LLM never produced valid, rule-passing
-output after every repair attempt in invoke_structured's retry loop was used up (see
-graph/structured.py). That's not a bad request from the client -- the request was
-fine, an upstream dependency (the LLM) failed to deliver -- so it maps to 502 Bad
-Gateway, not 400/422. A missing/invalid OPENAI_API_KEY is a server misconfiguration,
-mapped to 500.
-
-Every route except /health and /auth/verify requires the shared access code
-(api/auth.py) once ACCESS_CODE is set, and /gap-analysis + /draft persist a record of
-each successful call to SQLite (api/db.py) for the frontend's history view.
-
-Structured logging (career_copilot/observability.py) is configured at import time,
-below, before `app = FastAPI(...)` runs, so even startup-time log lines (e.g. from
-init_db in lifespan) go through it. A request-logging middleware and GET /metrics
-expose the same module's in-process counters.
-"""
+"""FastAPI entry point for the Career Copilot workflow."""
 from __future__ import annotations
 
 import logging
@@ -30,9 +10,9 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from langgraph.types import Command
+from openai import APIError
 from pydantic import BaseModel, Field
 
 from career_copilot.api.auth import get_client_id, require_access_code
@@ -76,32 +56,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Permissive CORS is fine here: the real access boundary is the shared access code
-# (api/auth.py), not same-origin policy, and the frontend sends its credential as a
-# plain custom header (X-Access-Code), never a cookie, so allow_credentials stays
-# False and a wildcard origin can't be abused to steal a session the way cookie-based
-# auth could be. Needed for local dev, where the Vite dev server (a different
-# origin/port) talks to this API directly; in the Docker image the frontend is served
-# by this same app, so it's same-origin there and this middleware is a no-op in
-# practice.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 @app.middleware("http")
 async def log_and_record_requests(request: Request, call_next):
-    """Every request goes through one place: one structured log line + one metrics
-    update, regardless of which route handled it (or whether it 500'd). Uses
-    request.url.path as the metrics/log key rather than a route template like
-    "/history/{id}", since FastAPI only resolves the matched route after this
-    middleware runs. Fine at this traffic scale -- history IDs are UUIDs, so they
-    won't collapse into a misleadingly "popular" bucket the way a numeric ID might,
-    and a portfolio demo doesn't have enough history records for that to matter.
-    """
+    """Record request latency and status using the matched route template."""
     started_at = time.monotonic()
     response = None
     try:
@@ -110,19 +69,20 @@ async def log_and_record_requests(request: Request, call_next):
     finally:
         duration_ms = (time.monotonic() - started_at) * 1000
         status_code = response.status_code if response is not None else 500
-        metrics.record_request(request.url.path, status_code, duration_ms)
+        route = request.scope.get("route")
+        route_path = getattr(route, "path", request.url.path)
+        metrics.record_request(route_path, status_code, duration_ms)
         logger.info(
             "%s %s -> %d (%.0fms)",
             request.method,
-            request.url.path,
+            route_path,
             status_code,
             duration_ms,
             extra={
                 "method": request.method,
-                "path": request.url.path,
+                "path": route_path,
                 "status_code": status_code,
                 "duration_ms": round(duration_ms, 1),
-                "client_id": request.headers.get("x-client-id"),
             },
         )
 
@@ -133,8 +93,17 @@ async def log_and_record_requests(request: Request, call_next):
 # the HTTP contract instead, and the two are allowed to drift independently.
 
 
+MAX_JD_CHARS = 30_000
+MAX_FEEDBACK_CHARS = 4_000
+
+
 class JDTextRequest(BaseModel):
-    jd_text: str = Field(..., min_length=1, description="Raw job description text.")
+    jd_text: str = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_JD_CHARS,
+        description="Raw job description text.",
+    )
 
 
 class GapAnalysisResponse(BaseModel):
@@ -152,8 +121,8 @@ class DraftDecisionRequest(BaseModel):
     action: Literal["approve", "revise"]
     feedback: str | None = Field(
         default=None,
-        description='Required in spirit (not enforced) for action="revise" -- see '
-        "_node_human_review's fallback text if omitted.",
+        max_length=MAX_FEEDBACK_CHARS,
+        description='Optional revision feedback when action="revise".',
     )
 
 
@@ -196,8 +165,7 @@ def health() -> dict:
     """No LLM call, no access code required -- deployment platforms probe this
     without any custom header, and it's useful to check the service is up even
     without the code in hand."""
-    settings = get_settings()
-    return {"status": "ok", "api_key_configured": bool(settings.openai_api_key)}
+    return {"status": "ok"}
 
 
 @app.get("/metrics")
@@ -241,7 +209,7 @@ def gap_analysis(
         jd = run_parse_jd(request.jd_text, settings=settings)
         bundles = run_retrieve_evidence(jd, settings=settings)
         report = run_gap_analysis(jd, bundles, settings=settings)
-    except StructuredOutputError as e:
+    except (StructuredOutputError, APIError) as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     except RuntimeError as e:
         # e.g. OPENAI_API_KEY not set — a server misconfiguration, not the client's fault.
@@ -318,8 +286,10 @@ def draft(
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
     try:
-        result = agent_graph.invoke({"jd_text": request.jd_text}, config=config)
-    except StructuredOutputError as e:
+        result = agent_graph.invoke(
+            {"jd_text": request.jd_text, "client_id": client_id}, config=config
+        )
+    except (StructuredOutputError, APIError) as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -359,7 +329,8 @@ def draft_decision(
     """
     config = {"configurable": {"thread_id": thread_id}}
 
-    if not agent_graph.get_state(config).values:
+    snapshot = agent_graph.get_state(config)
+    if not snapshot.values or snapshot.values.get("client_id") != client_id:
         raise HTTPException(
             status_code=404,
             detail="Review session not found or has expired. Please start a new draft.",
@@ -371,7 +342,7 @@ def draft_decision(
 
     try:
         result = agent_graph.invoke(Command(resume=decision), config=config)
-    except StructuredOutputError as e:
+    except (StructuredOutputError, APIError) as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e

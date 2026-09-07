@@ -102,6 +102,7 @@ def _pending_graph_result(*, critic_passed=True, revision_count=0, jd_text="Data
     call and every "revise" decision resumes into."""
     return {
         "jd_text": jd_text,
+        "client_id": "test-client",
         "jd": _jd(),
         "evidence_bundles": [_bundle()],
         "gap_report": _gap_report(),
@@ -126,6 +127,7 @@ def _approved_graph_result(*, revision_count=0, jd_text="Data Analyst role..."):
     produces once a human approves and the graph reaches END (no interrupt key)."""
     return {
         "jd_text": jd_text,
+        "client_id": "test-client",
         "jd": _jd(),
         "evidence_bundles": [_bundle()],
         "gap_report": _gap_report(),
@@ -139,9 +141,7 @@ def _approved_graph_result(*, revision_count=0, jd_text="Data Analyst role..."):
 def test_health_reports_ok_and_key_configured_flag_and_needs_no_client_id():
     response = client.get("/health")
     assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "ok"
-    assert "api_key_configured" in body
+    assert response.json() == {"status": "ok"}
 
 
 # --- GET /metrics ---

@@ -71,7 +71,7 @@ def judge_groundedness(
     # A non-zero temperature is deliberate here (unlike the production critic, which
     # runs at the default 0.0): the whole point of voting n_votes times is to observe
     # the judge's natural variance, which a temperature of 0 would mostly suppress.
-    llm = get_chat_model(settings, model_name=settings.critic_model, temperature=0.5)
+    llm = get_chat_model(settings, model_name=settings.judge_model, temperature=0.5)
     chunk_lookup = build_chunk_lookup(evidence_bundles)
     content = _format_draft_with_evidence(draft, chunk_lookup)
     messages = [SystemMessage(content=_JUDGE_PROMPT), HumanMessage(content=content)]

@@ -1,28 +1,34 @@
-"""Loader tests — pure logic, no API key needed."""
 from pathlib import Path
 
 from career_copilot.rag.loader import load_portfolio_docs
 
 
+def _portfolio_dir() -> Path:
+    return (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "career_copilot"
+        / "data"
+        / "portfolio"
+    )
+
+
 def test_loads_all_portfolio_docs():
-    portfolio_dir = Path(__file__).resolve().parents[1] / "src" / "career_copilot" / "data" / "portfolio"
-    docs = load_portfolio_docs(portfolio_dir)
+    docs = load_portfolio_docs(_portfolio_dir())
 
-    # resume_profile + work_experience + skills + 5 project write-ups = 8 docs
-    assert len(docs) == 8
-
-    ids = {d.doc_id for d in docs}
+    assert len(docs) == 9
+    ids = {doc.doc_id for doc in docs}
     assert "resume_profile" in ids
     assert "project_retail_demand_forecasting" in ids
+    assert "project_career_copilot_agent" in ids
 
 
 def test_frontmatter_parsed_into_metadata():
-    portfolio_dir = Path(__file__).resolve().parents[1] / "src" / "career_copilot" / "data" / "portfolio"
-    docs = load_portfolio_docs(portfolio_dir)
-    project_docs = [d for d in docs if d.doc_id.startswith("project_")]
+    docs = load_portfolio_docs(_portfolio_dir())
+    project_docs = [doc for doc in docs if doc.doc_id.startswith("project_")]
 
-    assert len(project_docs) == 5
-    for d in project_docs:
-        assert "project" in d.tags
-        assert d.title  # not empty
-        assert len(d.content) > 100  # body actually has substance
+    assert len(project_docs) == 6
+    for doc in project_docs:
+        assert "project" in doc.tags
+        assert doc.title
+        assert len(doc.content) > 100
