@@ -38,20 +38,20 @@ export default function JDForm({ onResult, notify }) {
       if (kind === "gap") {
         const data = await runGapAnalysis(jdText);
         onResult({ kind: "gap_analysis", data });
-        notify?.("Gap analysis ready! 🎯");
+        notify?.("Gap analysis ready.");
       } else {
         const data = await runDraft(jdText);
         onResult({ kind: "draft", data });
         notify?.(
           data.critic_passed
-            ? "Draft ready for your review! ✨"
+            ? "Draft ready for review."
             : "Draft ready for your review -- the critic flagged a few things."
         );
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 502) {
         setError(
-          "The AI model couldn't produce a valid result after several retries. This can happen with unusual job descriptions -- try again, or try a shorter JD."
+          "The model could not produce a valid result after several retries. Try again or use a shorter job description."
         );
       } else if (err instanceof ApiError) {
         setError(err.detail);

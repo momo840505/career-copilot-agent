@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException
 
@@ -8,8 +9,8 @@ from career_copilot.config import Settings, get_settings
 
 
 def require_access_code(
-    x_access_code: str | None = Header(default=None),
-    settings: Settings = Depends(get_settings),
+    settings: Annotated[Settings, Depends(get_settings)],
+    x_access_code: Annotated[str | None, Header()] = None,
 ) -> None:
     if not settings.access_code:
         return
@@ -17,7 +18,9 @@ def require_access_code(
         raise HTTPException(status_code=401, detail="Missing or incorrect access code.")
 
 
-def get_client_id(x_client_id: str | None = Header(default=None)) -> str:
+def get_client_id(
+    x_client_id: Annotated[str | None, Header()] = None,
+) -> str:
     if not x_client_id:
         raise HTTPException(status_code=400, detail="X-Client-Id header is required.")
     if len(x_client_id) > 128:

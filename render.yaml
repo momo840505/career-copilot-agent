@@ -1,13 +1,3 @@
-# Render Blueprint. Lets Render create and configure the web service from this one
-# file (New + -> Blueprint on the Render dashboard) instead of clicking through manual
-# setup -- also doubles as a checked-in record of exactly how this project is
-# deployed, which is worth more in a portfolio than a screenshot of a dashboard nobody
-# else can see.
-#
-# `runtime: docker` tells Render to build straight from ./Dockerfile (the same image
-# already verified locally) rather than trying to guess a buildpack.
-# healthCheckPath matches api/app.py's GET /health, which needs no access code and
-# makes no LLM call -- Render uses it to decide whether a deploy is actually live.
 services:
   - type: web
     runtime: docker
@@ -18,24 +8,15 @@ services:
     region: singapore
     healthCheckPath: /health
     envVars:
-      # sync: false -> Render prompts for these in the dashboard instead of storing
-      # the value in this file (which is committed to a PUBLIC repo). Never put a real
-      # key or the access code directly in this file.
       - key: OPENAI_API_KEY
         sync: false
       - key: ACCESS_CODE
         sync: false
-      # Not secrets -- fine to commit.
-      # OPENAI_CHAT_MODEL matches the fallback already used in .env.example and
-      # .github/workflows/ci.yml exactly, so local dev / CI / production agree on
-      # the same chat-model default unless deliberately overridden.
       - key: OPENAI_CHAT_MODEL
         value: gpt-4o-mini
-      # OPENAI_CRITIC_MODEL is a deliberate exception, NOT a value that "matches"
-      # .env.example -- .env.example (and config.py's own fallback) ship gpt-4o-mini
-      # as the default here, with a comment noting gpt-4o is worth trying if the
-      # critic is over-strict. Production uses that stronger gpt-4o critic on
-      # purpose, matching ci.yml's fallback (see its comment for why: gpt-4o-mini's
-      # critic once silently passed golden JDs that should have failed).
       - key: OPENAI_CRITIC_MODEL
         value: gpt-4o
+      - key: OPENAI_JUDGE_MODEL
+        value: gpt-4o
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"

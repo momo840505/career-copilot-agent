@@ -8,7 +8,12 @@ import os
 import pytest
 
 from career_copilot.config import get_settings
-from career_copilot.eval.metrics import body_claim_coverage, citation_validity, critic_converged, no_missing_skill_leak
+from career_copilot.eval.metrics import (
+    body_claim_coverage,
+    citation_validity,
+    critic_converged,
+    no_missing_skill_leak,
+)
 from career_copilot.graph.pipeline import MAX_REVISIONS, run_pipeline
 
 pytestmark = pytest.mark.requires_api

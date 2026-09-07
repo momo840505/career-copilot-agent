@@ -44,7 +44,7 @@ def test_full_chain_produces_grounded_gap_report():
     }
     # every citation must trace back to something actually retrieved
     assert cited <= valid_ids
-    # no evidence exists for LangGraph in the portfolio (by design) — expect it missing/partial
+    # The report should preserve the parsed requirement set and return a usable summary.
     all_requirements = {i.requirement for i in report.matched + report.partial + report.missing}
     assert len(all_requirements) > 0
     assert len(report.overall_fit_summary) > 0

@@ -59,7 +59,7 @@ function ScoreRing({ matched, partial, total }) {
       </svg>
       <div className="score-ring-label">
         <span className="score-ring-number">{score}%</span>
-        <span className="score-ring-caption">fit</span>
+        <span className="score-ring-caption">coverage</span>
       </div>
     </div>
   );

@@ -76,7 +76,7 @@ export default function App() {
             </span>
             <div>
               <h1 className="gradient-text">Career Copilot</h1>
-              <p className="brand-tagline">Evidence-grounded gap analysis &amp; cover letters ✨</p>
+              <p className="brand-tagline">Evidence-grounded gap analysis and cover letters</p>
             </div>
           </div>
           <nav>
@@ -90,10 +90,11 @@ export default function App() {
               className="tab theme-toggle"
               onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
               title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+              aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
             >
               {theme === "light" ? <IconMoon size={16} /> : <IconSun size={16} />}
             </button>
-            <button className="tab logout" onClick={handleLogout} title="Log out">
+            <button className="tab logout" onClick={handleLogout} title="Log out" aria-label="Log out">
               <IconLogOut size={16} />
             </button>
           </nav>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchHistoryList, fetchHistoryDetail, ApiError } from "../api.js";
 import GapAnalysisResult from "./GapAnalysisResult.jsx";
 import DraftResult from "./DraftResult.jsx";
@@ -12,6 +12,7 @@ export default function HistoryList() {
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const detailRequestId = useRef(0);
 
   useEffect(() => {
     fetchHistoryList()
@@ -23,15 +24,24 @@ export default function HistoryList() {
   }, []);
 
   function handleSelect(id) {
+    const requestId = ++detailRequestId.current;
     setSelectedId(id);
     setDetail(null);
     setDetailLoading(true);
+    setError("");
+
     fetchHistoryDetail(id)
-      .then(setDetail)
-      .catch((err) => {
-        setError(err instanceof ApiError ? err.detail : "Could not load that record.");
+      .then((data) => {
+        if (requestId === detailRequestId.current) setDetail(data);
       })
-      .finally(() => setDetailLoading(false));
+      .catch((err) => {
+        if (requestId === detailRequestId.current) {
+          setError(err instanceof ApiError ? err.detail : "Could not load that record.");
+        }
+      })
+      .finally(() => {
+        if (requestId === detailRequestId.current) setDetailLoading(false);
+      });
   }
 
   return (

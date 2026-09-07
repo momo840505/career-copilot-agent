@@ -440,3 +440,56 @@ def test_gap_analysis_blocked_without_correct_access_code_when_configured(monkey
         assert right_code.status_code == 200
     finally:
         _clear_access_code_override()
+
+
+
+def test_rejects_decision_from_a_different_client(monkeypatch):
+    state = _pending_graph_result()
+    state["client_id"] = "different-client"
+    monkeypatch.setattr(
+        app_module.agent_graph,
+        "get_state",
+        lambda config: _FakeStateSnapshot(state),
+    )
+
+    response = client.post(
+        "/draft/some-thread-id/decision",
+        json={"action": "approve"},
+        headers=CLIENT_HEADERS,
+    )
+
+    assert response.status_code == 404
+
+
+def test_rejects_oversized_job_description():
+    response = client.post(
+        "/gap-analysis",
+        json={"jd_text": "x" * 30001},
+        headers=CLIENT_HEADERS,
+    )
+
+    assert response.status_code == 422
+
+
+def test_metrics_uses_route_template_for_dynamic_history_path(monkeypatch):
+    monkeypatch.setattr(
+        app_module,
+        "get_history",
+        lambda db_path, client_id, record_id: None,
+    )
+    before = (
+        client.get("/metrics")
+        .json()["routes"]
+        .get("/history/{record_id}", {})
+        .get("count", 0)
+    )
+
+    response = client.get(
+        "/history/metrics-template-test",
+        headers=CLIENT_HEADERS,
+    )
+    assert response.status_code == 404
+
+    routes = client.get("/metrics").json()["routes"]
+    assert routes.get("/history/{record_id}", {}).get("count", 0) == before + 1
+    assert "/history/metrics-template-test" not in routes
