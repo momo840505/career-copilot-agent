@@ -19,7 +19,7 @@ system.
 - The container runs as a non-root user.
 - GitHub Actions runs lint, unit tests, frontend audit/build, live evals, and a Docker
   boot smoke test.
-- Dependabot tracks Python, npm, and GitHub Actions dependencies.
+- The default branch ruleset blocks branch deletion and non-fast-forward updates.
 
 ## ChromaDB
 

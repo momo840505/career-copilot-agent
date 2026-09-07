@@ -31,14 +31,7 @@ from career_copilot.schemas.gap import GapItem
 configure_logging()
 logger = logging.getLogger(__name__)
 
-# Compiled once per process, not once per request -- build_graph()'s own docstring
-# says to call it once per process. Its checkpointer (an InMemorySaver, see
-# build_graph.py) is what lets POST /draft/{thread_id}/decision find its way back to
-# a specific paused run: this module-level graph object stays the same across
-# requests, so the checkpoints written during /draft are still there when
-# /draft/{thread_id}/decision resumes them. Also means a paused (pending-review)
-# draft doesn't survive a process restart/redeploy -- fine for a single-instance
-# portfolio demo, not for anything scaled beyond one worker process.
+# A process-level graph preserves in-memory review checkpoints between requests.
 agent_graph = build_graph()
 
 
@@ -87,10 +80,7 @@ async def log_and_record_requests(request: Request, call_next):
         )
 
 
-# --- request/response models ---
-# Kept separate from the internal schemas/*.py Pydantic models (which are the LLM's
-# structured-output contract, tuned for prompting via Field descriptions) -- these are
-# the HTTP contract instead, and the two are allowed to drift independently.
+# HTTP request and response models are separate from internal structured-output schemas.
 
 
 MAX_JD_CHARS = 30_000
@@ -127,13 +117,7 @@ class DraftDecisionRequest(BaseModel):
 
 
 class DraftStepResponse(BaseModel):
-    """What both POST /draft and POST /draft/{thread_id}/decision return. The graph's
-    human_review node (build_graph.py) always pauses after the draft/critic loop ends
-    -- whether the critic passed or the revision budget ran out -- so a fresh POST
-    /draft never finishes a letter by itself; status is always "pending_review" there.
-    It only becomes "approved" from the decision route, once a human sends
-    {"action": "approve"} and the graph reaches END with no further interrupt.
-    """
+    """Response shared by draft creation and review decisions."""
 
     thread_id: str
     status: Literal["pending_review", "approved"]
@@ -162,21 +146,13 @@ class HistoryDetail(HistorySummary):
 
 @app.get("/health")
 def health() -> dict:
-    """No LLM call, no access code required -- deployment platforms probe this
-    without any custom header, and it's useful to check the service is up even
-    without the code in hand."""
+    """Public deployment health probe."""
     return {"status": "ok"}
 
 
 @app.get("/metrics")
 def metrics_snapshot() -> dict:
-    """No access code required, same reasoning as /health -- this is an ops endpoint,
-    not a data endpoint. It only exposes aggregate counts and latencies, no JD text,
-    cover letters, access codes, or anything tied to a client_id, so gating it behind
-    the shared code would only make it harder to check the service's health without
-    protecting anything sensitive. Resets to zero on every process restart (in-memory
-    only, see observability.py).
-    """
+    """Return process-local aggregate request metrics without user content."""
     return metrics.snapshot()
 
 
@@ -185,15 +161,7 @@ def auth_verify(
     _rl: None = Depends(rate_limit(5)),
     _: None = Depends(require_access_code),
 ) -> dict:
-    """What the frontend's login screen calls to check a code before storing it --
-    needs to be reachable without already having a verified code, so its whole job is
-    just running require_access_code and reporting whether it raised.
-
-    rate_limit(5) is listed before require_access_code on purpose: FastAPI resolves
-    Depends() in declared order, so a wrong access code no longer gets a free pass on
-    the limit by raising its 401 first -- see api/rate_limit.py for how that hole was
-    found and fixed.
-    """
+    """Validate the shared demo access code under the auth rate limit."""
     return {"ok": True}
 
 
@@ -212,7 +180,7 @@ def gap_analysis(
     except (StructuredOutputError, APIError) as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     except RuntimeError as e:
-        # e.g. OPENAI_API_KEY not set — a server misconfiguration, not the client's fault.
+        # Runtime configuration errors are server-side failures.
         raise HTTPException(status_code=500, detail=str(e)) from e
     response = GapAnalysisResponse(
         job_title=jd.job_title,
@@ -232,11 +200,9 @@ def gap_analysis(
 
 
 def _pending_review_response(thread_id: str, result: dict) -> DraftStepResponse:
-    """Builds a DraftStepResponse from a graph result that just hit human_review's
-    interrupt() -- result["__interrupt__"][0].value is exactly the payload dict
-    _node_human_review (build_graph.py) passed to interrupt()."""
+    """Build a response for a draft paused at human review."""
     interrupt_payload = result["__interrupt__"][0].value
-    draft = interrupt_payload["draft"]  # already a plain dict (draft.model_dump())
+    draft = interrupt_payload["draft"]
     return DraftStepResponse(
         thread_id=thread_id,
         status="pending_review",
@@ -253,8 +219,7 @@ def _pending_review_response(thread_id: str, result: dict) -> DraftStepResponse:
 
 
 def _approved_response(thread_id: str, result: dict) -> DraftStepResponse:
-    """Builds a DraftStepResponse from a graph result that reached END (the human
-    approved and no interrupt is pending)."""
+    """Build a response for an approved draft."""
     return DraftStepResponse(
         thread_id=thread_id,
         status="approved",
@@ -277,12 +242,7 @@ def draft(
     _: None = Depends(require_access_code),
     client_id: str = Depends(get_client_id),
 ) -> DraftStepResponse:
-    """Starts the full pipeline (parse -> retrieve -> gap analysis -> draft/critic
-    loop) on the compiled LangGraph StateGraph (build_graph.py). The graph's
-    human_review node always pauses here via interrupt() -- this call never returns
-    a finished letter by itself. The response's `thread_id` is what the client sends
-    back to POST /draft/{thread_id}/decision to approve or request a revision.
-    """
+    """Start the LangGraph drafting workflow and pause at human review."""
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
     try:
@@ -294,10 +254,7 @@ def draft(
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
-    # route_after_critic always sends the graph to human_review (pass or exhausted
-    # revision budget), so this branch should never trigger -- but if a future change
-    # to the graph let it reach END on the very first call, this degrades to an
-    # "approved" response (and records history) instead of crashing on a KeyError.
+    # Preserve a valid response if a future graph version reaches END immediately.
     if "__interrupt__" not in result:
         response = _approved_response(thread_id, result)
         insert_history(
@@ -317,16 +274,7 @@ def draft_decision(
     _: None = Depends(require_access_code),
     client_id: str = Depends(get_client_id),
 ) -> DraftStepResponse:
-    """Resumes a paused draft (see POST /draft) with the human's decision.
-
-    action="approve" ends the graph at END and returns the final letter -- that's
-    the only path that persists a history record, mirroring the old (pre-review)
-    /draft behavior of only ever recording a *finished* draft.
-
-    action="revise" sends the graph back to draft_writer with the given feedback
-    folded into feedback_history, and the response pauses at human_review again
-    (another "pending_review"), same as the CLI's scripts/graph_demo.py.
-    """
+    """Resume a paused draft with an approve or revise decision."""
     config = {"configurable": {"thread_id": thread_id}}
 
     snapshot = agent_graph.get_state(config)
@@ -363,8 +311,7 @@ def history_list(
     _: None = Depends(require_access_code),
     client_id: str = Depends(get_client_id),
 ) -> list[HistorySummary]:
-    """Summaries only (no jd_text/result) -- the list view doesn't need the full
-    payload, and keeping it light matters once someone has dozens of past runs."""
+    """Return history metadata without the full saved payload."""
     records = list_history(get_settings().history_db_path, client_id)
     return [
         HistorySummary(id=r.id, kind=r.kind, job_title=r.job_title, created_at=r.created_at)
@@ -391,17 +338,7 @@ def history_detail(
     )
 
 
-# --- serve the built frontend, if present ---
-# Must be registered last: Starlette matches routes in registration order, and a
-# Mount at "/" matches every path, so every @app.get/@app.post route above needs to
-# already be in app.router.routes before this runs, or the mount would shadow them.
-#
-# FRONTEND_DIST_DIR is unset in local dev (Vite's own dev server serves the frontend
-# there instead -- see frontend/vite.config.js's proxy) and set to /app/frontend_dist
-# by the Docker image (see ../../../Dockerfile), so this mount is a no-op except in
-# the built container. html=True serves frontend_dist/index.html for "/" -- the SPA
-# has no client-side routes of its own (App.jsx switches tabs via React state, not a
-# router), so nothing else needs a fallback.
+# Register the production frontend last so API routes keep precedence.
 _frontend_dist = os.getenv("FRONTEND_DIST_DIR")
 if _frontend_dist and Path(_frontend_dist).is_dir():
     app.mount("/", StaticFiles(directory=_frontend_dist, html=True), name="frontend")

@@ -1,19 +1,4 @@
-"""MCP server exposing career-copilot's pipeline as tools any MCP-aware client
-(Claude Desktop, an IDE, another agent) can call directly, no HTTP client required.
-
-Built against the mcp[cli] v2.x API -- worth flagging because the SDK made a breaking
-change between v1.x (`from mcp.server.fastmcp import FastMCP`) and v2.x (`from
-mcp.server import MCPServer`, the class itself renamed). See the `mcp[cli]` pin
-comment in requirements.txt for how I caught that. Written against v2's README
-directly, not copied from an older tutorial that would've used the old import.
-
-Run it with either:
-    mcp dev src/career_copilot/mcp_server.py        # interactive inspector
-    mcp run src/career_copilot/mcp_server.py --transport streamable-http
-
-Each tool below is a thin wrapper over the same node functions the CLI demos, the eval
-harness, and the FastAPI service all call — no logic is duplicated here, only exposed.
-"""
+"""MCP tools for portfolio retrieval, job-gap analysis, and cover-letter drafting."""
 from __future__ import annotations
 
 from mcp.server import MCPServer
@@ -30,12 +15,7 @@ mcp = MCPServer("career-copilot")
 
 @mcp.tool()
 def search_evidence(query: str, k: int = 4) -> list[dict]:
-    """Search the candidate's resume/portfolio for evidence relevant to a query
-    (a skill, a requirement, a topic). Returns the top-k matching chunks, each with
-    its chunk_id, source document title, the chunk text, and a similarity distance
-    (lower = more relevant). Use this to check what real evidence exists BEFORE
-    claiming the candidate has a given skill.
-    """
+    """Return portfolio evidence relevant to a query."""
     settings = get_settings()
     chunks = run_search(settings, query, k=k)
     return [
@@ -51,14 +31,7 @@ def search_evidence(query: str, k: int = 4) -> list[dict]:
 
 @mcp.tool()
 def analyze_job_description(jd_text: str) -> dict:
-    """Parse a raw job-description text into structured requirements, retrieve
-    matching evidence from the candidate's portfolio for every requirement, and
-    produce an honest gap analysis: which requirements are clearly matched, which
-    are only partially/adjacently supported, and which have no supporting evidence
-    at all. This is the same parse_jd -> retrieve_evidence -> gap_analysis pipeline
-    used everywhere else in this project — nothing here is a separate, looser
-    re-implementation.
-    """
+    """Parse a job description and return an evidence-grounded gap analysis."""
     settings = get_settings()
     jd = run_parse_jd(jd_text, settings=settings)
     bundles = run_retrieve_evidence(jd, settings=settings)
@@ -77,14 +50,7 @@ def analyze_job_description(jd_text: str) -> dict:
 
 @mcp.tool()
 def draft_cover_letter(jd_text: str) -> dict:
-    """Run the FULL pipeline end to end — parse the JD, retrieve evidence, analyze
-    gaps, then draft a cover letter through the draft/critic self-correction loop
-    (bounded retries, same as everywhere else in this project) — and return the
-    final draft plus whether the critic ultimately passed it and how many revisions
-    it took. This has NO human-in-the-loop approval step (unlike graph_demo.py's
-    interactive run) — it's meant for a caller that will review the draft itself
-    before it's ever sent anywhere, exactly like scripts/run_evals.py.
-    """
+    """Run the unattended drafting pipeline and return the reviewed draft."""
     settings = get_settings()
     result = run_pipeline(jd_text, settings=settings)
     return {
@@ -102,12 +68,8 @@ def draft_cover_letter(jd_text: str) -> dict:
 
 
 if __name__ == "__main__":
-    # `python src/career_copilot/mcp_server.py` directly is NOT how the v2 SDK expects
-    # this to run — there's no documented .run()/.serve() for that. Use the `mcp`
-    # CLI instead (`mcp dev ...` / `mcp run ... --transport streamable-http`), per the
-    # module docstring above.
     raise SystemExit(
-        "Run this with the `mcp` CLI, not `python`: "
+        "Run with the MCP CLI: "
         "`mcp dev src/career_copilot/mcp_server.py` or "
         "`mcp run src/career_copilot/mcp_server.py --transport streamable-http`."
     )

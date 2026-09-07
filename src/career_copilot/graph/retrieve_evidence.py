@@ -1,10 +1,4 @@
-"""For every JD requirement, retrieves the most relevant portfolio evidence.
-
-One retrieval call per requirement (not one big query for the whole JD) is deliberate:
-gap_analysis needs to see, requirement by requirement, whether *anything* relevant came
-back at all — that per-requirement signal is what lets it tell matched vs. partial vs.
-missing apart, rather than one blurry "here's some stuff that's kind of related".
-"""
+"""Retrieve portfolio evidence independently for each job requirement."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -34,6 +28,5 @@ def retrieve_evidence(
 
 
 def all_chunk_ids(bundles: list[EvidenceBundle]) -> set[str]:
-    """Every chunk_id actually shown to the model — the ground truth gap_analysis's
-    citation check validates against."""
+    """Return every chunk ID included in the retrieved evidence bundles."""
     return {chunk.chunk_id for bundle in bundles for chunk in bundle.chunks}

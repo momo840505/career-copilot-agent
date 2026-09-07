@@ -1,15 +1,4 @@
-"""Runs parse_jd -> retrieve_evidence -> gap_analysis -> draft_writer <-> critic
-end to end with no human in the loop. Used by evals and anything else that needs
-to run unattended.
-
-The draft/critic retry loop here is a plain Python for-loop; build_graph.py runs
-the same two steps as LangGraph nodes with a conditional edge instead, since a
-compiled graph and a for-loop are just different execution models and one can't
-call the other. What COULD drift between them -- turning a critic verdict into
-feedback text, and merging that into the running history -- is pulled out into
-critic_feedback.py and imported by both, so that part can't silently go out of
-sync.
-"""
+"""Unattended parse, retrieval, gap-analysis, draft, and critic pipeline."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -55,14 +44,12 @@ def run_pipeline(
     verdict: CriticVerdict | None = None
     revision_count = 0
 
-    for attempt in range(1, max_revisions + 2):  # 1 initial + max_revisions repairs
+    for attempt in range(1, max_revisions + 2):
         draft = run_draft_writer(
             jd, gap_report, bundles, revision_feedback=feedback_history or None, settings=settings
         )
         verdict = run_critic(draft, gap_report, bundles, settings=settings)
-        # attempt 1 is the initial draft, attempt N (N>1) is revision N-1. Set this
-        # every time, pass or fail, so it always means "how many revisions this
-        # draft went through" -- see tests/test_pipeline_revision_count.py.
+        # Revision count excludes the initial draft.
         revision_count = attempt - 1
         if verdict.passed:
             break
@@ -72,7 +59,7 @@ def run_pipeline(
             feedback_history, verdict_to_feedback_items(verdict)
         )
 
-    assert draft is not None and verdict is not None  # loop above always runs >=1 time
+    assert draft is not None and verdict is not None
     return PipelineResult(
         jd=jd,
         evidence_bundles=bundles,

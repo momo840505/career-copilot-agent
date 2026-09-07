@@ -1,7 +1,4 @@
-"""Wires parse_jd, retrieve_evidence, gap_analysis, draft_writer, and critic
-(all plain functions elsewhere in graph/) into a LangGraph StateGraph, and adds
-a human_review node that actually pauses the graph with interrupt().
-"""
+"""LangGraph workflow for evidence retrieval, drafting, critique, and human review."""
 from __future__ import annotations
 
 from langgraph.checkpoint.memory import InMemorySaver
@@ -25,11 +22,7 @@ from career_copilot.schemas.jd import JDRequirements
 
 MAX_REVISIONS = 2
 
-# Every custom type that can end up in AgentState, so the checkpointer's serializer
-# can reconstruct it by name. Without this it still works but logs a deprecation
-# warning per type, and LangGraph's checkpoint format can otherwise reconstruct
-# arbitrary Python objects (GHSA-g48c-2wqr-h844) -- listing our own classes here
-# instead of leaving the default wide open closes that off.
+# Restrict checkpoint deserialization to the state types used by this graph.
 _ALLOWED_CHECKPOINT_TYPES = [
     JDRequirements,
     RetrievedChunk,
@@ -67,8 +60,7 @@ def _node_draft_writer(state: AgentState) -> dict:
         state["evidence_bundles"],
         revision_feedback=state.get("feedback_history") or None,
     )
-    # 1 for the first draft, 2 for the first revision, etc. -- _node_critic turns
-    # this into revision_count = attempt_count - 1.
+    # attempt_count includes the initial draft; revision_count excludes it.
     attempt_count = state.get("attempt_count", 0) + 1
     return {"draft": draft, "attempt_count": attempt_count}
 
@@ -87,8 +79,7 @@ def _node_critic(state: AgentState) -> dict:
 
 
 def route_after_critic(state: AgentState) -> str:
-    """Once revision_count hits MAX_REVISIONS, stop looping and send whatever we
-    have to the human instead of retrying forever."""
+    """Route an accepted or exhausted draft to human review."""
     verdict = state["critic_verdict"]
     if verdict.passed:
         return "human_review"
@@ -98,14 +89,7 @@ def route_after_critic(state: AgentState) -> str:
 
 
 def _node_human_review(state: AgentState) -> dict:
-    """Pauses the graph with interrupt() until someone calls
-    graph.invoke(Command(resume=decision), config=...) with the same thread_id.
-
-    Gotcha: on resume, this function reruns from the top, including the lines
-    before interrupt(). Harmless here since those lines only read state, but any
-    node with a real side effect (an API call, a DB write, an email) needs that
-    side effect AFTER interrupt(), not before, or a resume repeats it.
-    """
+    """Pause the graph until the matching thread is approved or revised."""
     payload = {
         "draft": state["draft"].model_dump(),
         "critic_passed": state["critic_verdict"].passed,
@@ -113,8 +97,7 @@ def _node_human_review(state: AgentState) -> dict:
         "gap_summary": state["gap_report"].overall_fit_summary,
     }
     decision = interrupt(payload)
-    # Expected shape from the caller: {"action": "approve"} or
-    # {"action": "revise", "feedback": "<free text>"}.
+    # The caller supplies an approve or revise decision.
     updates: dict = {"human_decision": decision}
     if decision.get("action") == "revise" and decision.get("feedback"):
         note = f"Human reviewer feedback: {decision['feedback']}"
@@ -126,16 +109,11 @@ def route_after_human(state: AgentState) -> str:
     decision = state.get("human_decision") or {}
     if decision.get("action") == "approve":
         return END
-    return "draft_writer"  # explicit "revise", or anything malformed -> try again
+    return "draft_writer"
 
 
 def build_graph():
-    """Compile the full parse_jd -> retrieve_evidence -> gap_analysis -> draft_writer
-    <-> critic -> human_review pipeline. Call this once per process; `graph.invoke()`
-    takes a fresh `{"jd_text": ...}` and a `config={"configurable": {"thread_id": ...}}`
-    per run — the thread_id is what lets a later Command(resume=...) find its way back
-    to the same paused run.
-    """
+    """Compile the web drafting workflow with an in-memory review checkpoint."""
     builder = StateGraph(AgentState)
     builder.add_node("parse_jd", _node_parse_jd)
     builder.add_node("retrieve_evidence", _node_retrieve_evidence)

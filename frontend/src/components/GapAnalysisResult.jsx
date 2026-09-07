@@ -34,15 +34,13 @@ function StatCard({ icon, count, label, tone }) {
   );
 }
 
-// A round "fit score" ring: matched counts fully, partial counts half. Purely a
-// friendly at-a-glance visual on top of the same matched/partial/missing counts
-// already shown below -- not a new field from the backend.
-function ScoreRing({ matched, partial, total }) {
-  const score = total > 0 ? Math.round(((matched + partial * 0.5) / total) * 100) : 0;
+// Presentation-only requirement coverage: matched=1, partial=0.5, missing=0.
+function CoverageRing({ matched, partial, total }) {
+  const coverage = total > 0 ? Math.round(((matched + partial * 0.5) / total) * 100) : 0;
   const radius = 42;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference * (1 - score / 100);
-  const tone = score >= 70 ? "matched" : score >= 40 ? "partial" : "missing";
+  const offset = circumference * (1 - coverage / 100);
+  const tone = coverage >= 70 ? "matched" : coverage >= 40 ? "partial" : "missing";
 
   return (
     <div className="score-ring">
@@ -58,8 +56,13 @@ function ScoreRing({ matched, partial, total }) {
         />
       </svg>
       <div className="score-ring-label">
-        <span className="score-ring-number">{score}%</span>
-        <span className="score-ring-caption">coverage</span>
+        <span className="score-ring-number">{coverage}%</span>
+        <span
+          className="score-ring-caption"
+          title="Matched requirements count fully; partial requirements count half."
+        >
+          requirement coverage
+        </span>
       </div>
     </div>
   );
@@ -78,7 +81,7 @@ export default function GapAnalysisResult({ result }) {
           <h2>{result.job_title || "Gap Analysis"}</h2>
           {result.overall_fit_summary && <p className="fit-summary">"{result.overall_fit_summary}"</p>}
         </div>
-        <ScoreRing matched={matched} partial={partial} total={total} />
+        <CoverageRing matched={matched} partial={partial} total={total} />
       </div>
 
       <div className="stats-strip">

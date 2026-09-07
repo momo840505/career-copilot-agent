@@ -22,22 +22,42 @@ application does not submit emails or job applications.
 ## Architecture
 
 ```mermaid
-flowchart LR
-    A[React] --> B[FastAPI]
-    B --> C[LangGraph]
-    C --> D[JD parser]
-    D --> E[RAG retrieval]
-    E --> F[Gap analysis]
-    F --> G[Draft writer]
-    G --> H[Critic]
-    H -->|revise| G
-    H --> I[Human review]
-    I -->|revise| G
-    I -->|approve| J[Final draft]
-    E --> K[(ChromaDB)]
-    B --> L[(SQLite)]
-    C --> M[OpenAI API]
+flowchart TB
+    UI[React] --> API[FastAPI]
+    MC[MCP client] --> MS[MCP server]
+
+    API -->|gap analysis| P[JD parser]
+    API -->|cover-letter draft| LG[LangGraph]
+    MS -->|job analysis| P
+    MS -->|evidence search| R[RAG retrieval]
+    MS -->|draft tool| UP[Unattended pipeline]
+
+    LG --> P
+    UP --> P
+    P --> R
+    R --> G[Gap analysis]
+    G -->|draft workflows| D[Draft writer]
+    G -->|analysis response| GA[Gap result]
+
+    D --> C[Critic]
+    C -->|revise| D
+    C -->|web workflow| H[Human review]
+    H -->|revise| D
+    H -->|approve| F[Final draft]
+    C -->|unattended workflow| F
+
+    R --> CH[(ChromaDB)]
+    API --> DB[(SQLite history)]
+
+    P -. structured output .-> O[OpenAI API]
+    G -. structured output .-> O
+    D -. structured output .-> O
+    C -. structured output .-> O
+    CH -. embeddings .-> O
 ```
+
+`POST /gap-analysis` stops after the gap result. `POST /draft` uses the LangGraph
+human-review path, while the MCP draft tool uses the unattended pipeline.
 
 ## Reliability controls
 
@@ -54,6 +74,7 @@ flowchart LR
 - Human review is implemented with a LangGraph interrupt.
 - Review threads are tied to the browser client that created them.
 - Request metrics use route templates rather than raw record or thread IDs.
+- The UI requirement-coverage percentage is a presentation heuristic (`matched=1`, `partial=0.5`, `missing=0`), not a hiring or acceptance probability.
 
 ## Evaluation
 

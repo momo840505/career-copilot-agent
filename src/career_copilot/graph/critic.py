@@ -1,7 +1,4 @@
-"""A skeptical second LLM pass that has to approve the draft before it's allowed
-anywhere near a human. The other half of the self-correction loop -- draft_writer
-proposes, critic disposes.
-"""
+"""Evidence-grounded review pass for cover-letter drafts."""
 from __future__ import annotations
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -58,12 +55,7 @@ a vague overall impression.
 def _format_draft_with_inline_evidence(
     draft: CoverLetterDraft, chunk_lookup: dict[str, RetrievedChunk]
 ) -> str:
-    """Shows each claim with the actual text of its own cited evidence directly below
-    it -- does the claim<->evidence join in code instead of handing the model two
-    separately-shaped lists and expecting it to cross-reference them reliably.
-    Without this, the critic defaulted to flagging every single claim as
-    "ungrounded" regardless of the draft's actual quality -- it wasn't failing to
-    find support, it was failing to do the lookup."""
+    """Pair each claim with the text of its cited evidence."""
     lines = [f"Greeting: {draft.greeting}", f"\nBody:\n{draft.body}", f"\nClosing: {draft.closing}"]
     lines.append("\nClaims made, each followed by the full text of its own cited evidence:")
     for c in draft.claims:
@@ -91,10 +83,7 @@ def critic(
     settings: Settings | None = None,
 ) -> CriticVerdict:
     settings = settings or get_settings()
-    # Uses its own model setting (OPENAI_CRITIC_MODEL), separate from the writer --
-    # "judge whether this is good enough" is a harder call than "extract/draft".
-    # config.py already had settings.critic_model; this call just wasn't passing it
-    # through yet.
+    # The critic can use a model configured independently from the writer.
     llm = get_chat_model(settings, model_name=settings.critic_model)
     chunk_lookup = build_chunk_lookup(evidence_bundles)
 
