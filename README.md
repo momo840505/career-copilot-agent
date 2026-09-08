@@ -2,97 +2,86 @@
 
 # Career Copilot Agent
 
-Evidence-grounded job gap analysis and cover-letter drafting with LangGraph, RAG,
-human review, and automated evaluation.
+Job-gap analysis and cover-letter drafting using portfolio evidence, LangGraph, and human review.
 
 [![CI](https://github.com/momo840505/career-copilot-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/momo840505/career-copilot-agent/actions/workflows/ci.yml)
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Open%20App-2EA44F)](https://career-copilot-agent.onrender.com)
 
 </div>
 
-## Overview
+## Why I built it
 
-Career Copilot compares a job description with a structured portfolio knowledge base.
-It retrieves evidence for each requirement, classifies the requirement as matched,
-partial, or missing, and can draft a cover letter using retrieved evidence.
+I wanted a project where an LLM had to stay tied to evidence instead of just producing a fluent answer.
 
-The drafting workflow includes a critic pass and a human approval checkpoint. The
-application does not submit emails or job applications.
+The app takes a job description, breaks it into requirements, searches a small portfolio knowledge base, and marks each requirement as matched, partial, or missing. It can then draft a cover letter using the retrieved evidence.
 
-## Architecture
+The web drafting flow does not finish automatically. After the critic step, the draft pauses for a person to approve it or send it back for another revision.
+
+The application does not submit job applications or send emails.
+
+## How it works
 
 ```mermaid
 flowchart TB
-    UI[React] --> API[FastAPI]
-    MC[MCP client] --> MS[MCP server]
-
-    API -->|gap analysis| P[JD parser]
-    API -->|cover-letter draft| LG[LangGraph]
-    MS -->|job analysis| P
-    MS -->|evidence search| R[RAG retrieval]
-    MS -->|draft tool| UP[Unattended pipeline]
-
-    LG --> P
-    UP --> P
-    P --> R
+    UI[React UI] --> API[FastAPI]
+    API --> P[Parse job description]
+    P --> R[Retrieve portfolio evidence]
     R --> G[Gap analysis]
-    G -->|draft workflows| D[Draft writer]
-    G -->|analysis response| GA[Gap result]
-
+    G --> D[Draft cover letter]
     D --> C[Critic]
-    C -->|revise| D
-    C -->|web workflow| H[Human review]
+    C -->|needs changes| D
+    C -->|ready for review| H[Human review]
     H -->|revise| D
     H -->|approve| F[Final draft]
-    C -->|unattended workflow| F
 
-    R --> CH[(ChromaDB)]
+    R --> V[(ChromaDB)]
     API --> DB[(SQLite history)]
 
     P -. structured output .-> O[OpenAI API]
     G -. structured output .-> O
     D -. structured output .-> O
     C -. structured output .-> O
-    CH -. embeddings .-> O
 ```
 
-`POST /gap-analysis` stops after the gap result. `POST /draft` uses the LangGraph
-human-review path, while the MCP draft tool uses the unattended pipeline.
+There is also an MCP server with tools for evidence search, job analysis, and cover-letter drafting.
 
-## Reliability controls
+## Things I added after testing the first version
 
-- Retrieval runs independently for each job requirement.
-- MMR re-ranking reduces duplicate evidence.
-- A configurable distance threshold allows retrieval to return no evidence for weak
-  matches.
-- Every parsed requirement must appear exactly once in the gap report.
-- Citations are checked against evidence retrieved for the same requirement.
-- Rebuilding the index replaces the Chroma collection to remove stale vectors.
-- Structured outputs use Pydantic validation and bounded repair retries.
-- Provider/API failures are separate from structured-output repair retries.
-- Factual cover-letter sentences must be represented in the citation-backed claim list.
-- Human review is implemented with a LangGraph interrupt.
+A few parts were added because the first working version was too easy to trust when it should not have been.
+
+- Retrieval runs separately for each job requirement instead of doing one broad search for the whole JD.
+- Weak retrieval matches can be dropped with a distance threshold.
+- MMR re-ranking reduces near-duplicate evidence.
+- Every parsed requirement has to appear exactly once in the gap report.
+- A citation can only point to evidence retrieved for the same requirement.
+- Rebuilding the index replaces the old Chroma collection so stale chunks are not left behind.
+- Structured outputs are validated with Pydantic and only get a limited number of repair attempts.
+- API/provider failures are handled separately from output-format repair retries.
+- Factual sentences in the cover letter are checked against the draft's citation-backed claims.
 - Review threads are tied to the browser client that created them.
-- Request metrics use route templates rather than raw record or thread IDs.
-- The UI requirement-coverage percentage is a presentation heuristic (`matched=1`, `partial=0.5`, `missing=0`), not a hiring or acceptance probability.
+- Request metrics use route templates instead of saving record IDs or review thread IDs in metric labels.
+
+The requirement-coverage percentage shown in the UI is only a display score (`matched=1`, `partial=0.5`, `missing=0`). It is not a hiring probability.
 
 ## Evaluation
 
-The repository combines deterministic checks with a golden job-description suite.
+The repo has deterministic checks plus a small golden set of job descriptions.
 
-Hard checks cover:
+The checks cover:
 
-- citation validity
-- factual body/claim coverage
-- missing-skill leakage
-- critic convergence
+- citation validity;
+- factual body/claim coverage;
+- missing skills being incorrectly presented as experience;
+- draft/critic revision behaviour;
+- retrieval threshold behaviour;
+- MMR selection;
+- API, history, rate-limit, and review-thread behaviour.
 
-Groundedness is scored separately with repeated judge votes and is reported as an
-informational metric.
+There is also a separate LLM-as-judge groundedness check. I run repeated votes and report the spread as well as the median because I found that a single judge call can move between runs.
 
-## API
+That judge score is informational. It is not used as the only pass/fail rule for the application.
 
-Main endpoints:
+## Main API routes
 
 - `GET /health`
 - `GET /metrics`
@@ -103,11 +92,11 @@ Main endpoints:
 - `GET /history`
 - `GET /history/{record_id}`
 
-The deployed demo uses a shared access code to limit public API usage. It is a demo
-gate rather than a user-account system. History is scoped with a browser-generated
-client ID.
+The public demo uses a shared access code to reduce random API usage. It is only a demo gate, not a real user-account system.
 
-## MCP
+History is scoped with a browser-generated client ID.
+
+## MCP tools
 
 The MCP server exposes:
 
@@ -121,7 +110,7 @@ Run it with:
 mcp run src/career_copilot/mcp_server.py --transport streamable-http
 ```
 
-## Local setup
+## Run locally
 
 PowerShell:
 
@@ -151,14 +140,13 @@ docker build -t career-copilot .
 docker run --rm -p 8000:8000 --env-file .env career-copilot
 ```
 
-The Docker build uses separate Node and Python build stages. The runtime image does
-not include Node or build-essential and runs as a non-root user.
+The runtime image runs as a non-root user. Node is only used in the frontend build stage and is not kept in the final Python runtime image.
 
-## Observability
+## Logs and metrics
 
-Requests and structured LLM calls are logged with route, status, latency, node, attempt
-count, and retry state. `/metrics` exposes process-local aggregates and does not include
-job descriptions, access codes, client IDs, record IDs, or review thread IDs.
+The app records request status and latency plus structured-call information such as node name and retry state.
+
+`/metrics` returns process-local totals. It does not include job-description text, access codes, client IDs, history record IDs, or review thread IDs.
 
 ## Screenshots
 
@@ -170,7 +158,7 @@ job descriptions, access codes, client IDs, record IDs, or review thread IDs.
 
 ![Gap analysis](docs/images/gap_analysis_result.png)
 
-### Cover letter review
+### Cover-letter review
 
 ![Cover letter review](docs/images/cover_letter_result.png)
 
@@ -178,11 +166,17 @@ job descriptions, access codes, client IDs, record IDs, or review thread IDs.
 
 ![History](docs/images/history.png)
 
-## Limitations
+## Current limitations
 
-This is a single-instance portfolio deployment. SQLite history, in-memory LangGraph
-checkpoints, and process-local metrics do not provide multi-instance durability. A
-production multi-user deployment would use durable identity, persistent checkpoints,
-a managed database, centralized rate limiting, and external metrics storage.
+This is still a single-instance portfolio deployment.
 
-See [SECURITY.md](SECURITY.md) for the deployment security boundary.
+- Review checkpoints are stored in memory, so an unfinished review session is lost if the server restarts.
+- History uses SQLite.
+- Request metrics are process-local.
+- The shared access code is not a replacement for user authentication.
+- The portfolio knowledge base is small and manually maintained.
+- LLM output still depends on the external model provider, so deterministic validation is used where possible but cannot remove all model variability.
+
+For a multi-user deployment I would move review checkpoints and history to durable storage, use real identity/authentication, use shared rate limiting, and send metrics to an external monitoring system.
+
+See [SECURITY.md](SECURITY.md) for the current deployment boundary.
